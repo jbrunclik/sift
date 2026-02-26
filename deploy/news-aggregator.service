@@ -1,0 +1,14 @@
+[Unit]
+Description=Sift News Aggregator
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/news-aggregator
+ExecStart=%h/.local/bin/uv run uvicorn backend.main:app --host ${HOST} --port ${PORT}
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=%h/news-aggregator/.env
+
+[Install]
+WantedBy=default.target

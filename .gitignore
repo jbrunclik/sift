@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+
+# uv
+.python-versions
+
+# Environment
+.env
+
+# Data
+data/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Claude Code
+.claude/settings.local.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Playwright
+test-results/
+playwright-report/
+tests/visual/screenshots/actual/
