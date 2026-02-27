@@ -145,9 +145,7 @@ async def get_article(article_id: int) -> Article:
 async def mark_read(article_id: int) -> dict[str, str]:
     db = await get_db()
     try:
-        cursor = await db.execute(
-            "UPDATE articles SET is_read = 1 WHERE id = ?", (article_id,)
-        )
+        cursor = await db.execute("UPDATE articles SET is_read = 1 WHERE id = ?", (article_id,))
         await db.commit()
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Article not found")
@@ -160,9 +158,7 @@ async def mark_read(article_id: int) -> dict[str, str]:
 async def mark_unread(article_id: int) -> dict[str, str]:
     db = await get_db()
     try:
-        cursor = await db.execute(
-            "UPDATE articles SET is_read = 0 WHERE id = ?", (article_id,)
-        )
+        cursor = await db.execute("UPDATE articles SET is_read = 0 WHERE id = ?", (article_id,))
         await db.commit()
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Article not found")
@@ -175,9 +171,7 @@ async def mark_unread(article_id: int) -> dict[str, str]:
 async def hide_article(article_id: int) -> dict[str, str]:
     db = await get_db()
     try:
-        cursor = await db.execute(
-            "UPDATE articles SET is_hidden = 1 WHERE id = ?", (article_id,)
-        )
+        cursor = await db.execute("UPDATE articles SET is_hidden = 1 WHERE id = ?", (article_id,))
         await db.commit()
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Article not found")

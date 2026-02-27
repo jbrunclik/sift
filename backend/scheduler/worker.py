@@ -135,6 +135,16 @@ async def fetch_all_sources() -> None:
             logger.exception("Error fetching source %d", source_id)
 
 
+async def score_unscored_articles() -> None:
+    """Score all unscored articles via the Gemini pipeline."""
+    try:
+        from backend.scoring import run_scoring_pipeline
+
+        await run_scoring_pipeline()
+    except Exception:
+        logger.exception("Scoring pipeline failed")
+
+
 def _normalize_url(url: str) -> str:
     """Normalize URL for deduplication."""
     from urllib.parse import parse_qs, urlencode, urlparse, urlunparse

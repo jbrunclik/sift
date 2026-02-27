@@ -1,0 +1,258 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiosqlite
+import pytest
+
+from backend.scoring.pipeline import run_scoring_pipeline
+from backend.scoring.scorer import ScoringError, ScoringResult
+
+# Distinct titles that won't fuzzy-match each other (< 0.80 similarity)
+DISTINCT_TITLES = [
+    "Python Introduces New Pattern Matching Syntax",
+    "Rust Memory Safety Guarantees Explained in Depth",
+    "Kubernetes Cluster Autoscaling Best Practices Guide",
+    "PostgreSQL Performance Tuning for High Traffic",
+    "WebAssembly Runtime Reaches Production Stability",
+    "Machine Learning Pipeline Orchestration with Airflow",
+    "GraphQL Federation Architecture Design Patterns",
+    "Distributed Consensus Algorithms Compared Thoroughly",
+    "Zero Trust Security Model Implementation Steps",
+    "Serverless Computing Cost Optimization Strategies",
+    "React Server Components Deep Dive Tutorial",
+    "Linux Kernel Scheduling Improvements Overview",
+]
+
+
+async def _insert_source(db: aiosqlite.Connection, name: str = "Test Source") -> int:
+    cursor = await db.execute(
+        "INSERT INTO sources (name, slug, source_type) VALUES (?, ?, 'rss')",
+        (name, name.lower().replace(" ", "-")),
+    )
+    await db.commit()
+    return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def _insert_article(
+    db: aiosqlite.Connection,
+    source_id: int,
+    url: str = "https://example.com/article",
+    title: str = "Test Article",
+    content_full: str = "Article content here.",
+) -> int:
+    cursor = await db.execute(
+        """
+        INSERT INTO articles (source_id, url, url_normalized, title, content_full)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (source_id, url, url, title, content_full),
+    )
+    await db.commit()
+    return cursor.lastrowid  # type: ignore[return-value]
+
+
+def _make_result(score: float = 7.5, tags: list[str] | None = None) -> ScoringResult:
+    return ScoringResult(
+        relevance_score=score,
+        summary="Test summary",
+        explanation="Test explanation",
+        tags=tags or ["python", "testing"],
+    )
+
+
+def _patch_pipeline(db: aiosqlite.Connection) -> tuple[object, ...]:
+    """Common patches for pipeline tests. Returns context managers."""
+    return (
+        patch("backend.scoring.pipeline.create_gemini_client"),
+        patch("backend.scoring.pipeline.get_db", return_value=db),
+        # Prevent pipeline from closing the test fixture's connection
+        patch.object(db, "close", new_callable=AsyncMock),
+    )
+
+
+class TestRunScoringPipeline:
+    @pytest.mark.asyncio
+    async def test_full_flow(self, db: aiosqlite.Connection) -> None:
+        source_id = await _insert_source(db)
+        await _insert_article(
+            db, source_id, url="https://a.com/1", title="Python Releases Major Update"
+        )
+        await _insert_article(
+            db, source_id, url="https://b.com/2", title="Kubernetes Scaling Best Practices"
+        )
+
+        results = [_make_result(8.0, ["ai"]), _make_result(5.0, ["news"])]
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch("backend.scoring.pipeline.score_batch", new_callable=AsyncMock) as mock_score,
+        ):
+            mock_client.return_value = MagicMock()
+            mock_score.return_value = results
+
+            await run_scoring_pipeline()
+
+        # Verify articles were scored
+        rows = await db.execute_fetchall(
+            "SELECT id, relevance_score, summary, scored_at FROM articles ORDER BY id"
+        )
+        assert len(rows) == 2
+        assert float(rows[0]["relevance_score"]) == 8.0
+        assert rows[0]["summary"] == "Test summary"
+        assert rows[0]["scored_at"] is not None
+        assert float(rows[1]["relevance_score"]) == 5.0
+
+    @pytest.mark.asyncio
+    async def test_skips_when_no_api_key(self, db: aiosqlite.Connection) -> None:
+        with (
+            patch(
+                "backend.scoring.pipeline.create_gemini_client",
+                side_effect=ValueError("No key"),
+            ),
+            patch("backend.scoring.pipeline.get_db", return_value=db) as mock_get_db,
+        ):
+            await run_scoring_pipeline()
+
+        # get_db should NOT have been called since we bail early
+        mock_get_db.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_unscored_articles(self, db: aiosqlite.Connection) -> None:
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch("backend.scoring.pipeline.score_batch", new_callable=AsyncMock) as mock_score,
+        ):
+            mock_client.return_value = MagicMock()
+            await run_scoring_pipeline()
+
+        mock_score.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_batch_failure_marks_articles(self, db: aiosqlite.Connection) -> None:
+        source_id = await _insert_source(db)
+        art_id = await _insert_article(db, source_id)
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch(
+                "backend.scoring.pipeline.score_batch",
+                new_callable=AsyncMock,
+                side_effect=ScoringError("API error", batch_ids=[art_id]),
+            ),
+        ):
+            mock_client.return_value = MagicMock()
+            await run_scoring_pipeline()
+
+        # Article should be marked as failed (-1.0) to prevent retries
+        rows = await db.execute_fetchall(
+            "SELECT relevance_score, scored_at FROM articles WHERE id = ?", (art_id,)
+        )
+        assert float(rows[0]["relevance_score"]) == -1.0
+        assert rows[0]["scored_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_deduplication_same_url(self, db: aiosqlite.Connection) -> None:
+        src1 = await _insert_source(db, "Source A")
+        src2 = await _insert_source(db, "Source B")
+        await _insert_article(db, src1, url="https://example.com/same", title="Same Article")
+        await _insert_article(db, src2, url="https://example.com/same", title="Same Article")
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch("backend.scoring.pipeline.score_batch", new_callable=AsyncMock) as mock_score,
+        ):
+            mock_client.return_value = MagicMock()
+            # Only 1 result because dedup merges into 1 group
+            mock_score.return_value = [_make_result(9.0)]
+
+            await run_scoring_pipeline()
+
+        # Both articles should have the same score
+        rows = await db.execute_fetchall("SELECT relevance_score FROM articles ORDER BY id")
+        assert len(rows) == 2
+        assert float(rows[0]["relevance_score"]) == 9.0
+        assert float(rows[1]["relevance_score"]) == 9.0
+        # score_batch called once (1 group = 1 batch)
+        mock_score.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_tags_stored(self, db: aiosqlite.Connection) -> None:
+        source_id = await _insert_source(db)
+        art_id = await _insert_article(db, source_id)
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch("backend.scoring.pipeline.score_batch", new_callable=AsyncMock) as mock_score,
+        ):
+            mock_client.return_value = MagicMock()
+            mock_score.return_value = [_make_result(7.0, ["python", "testing"])]
+
+            await run_scoring_pipeline()
+
+        # Check tags table
+        tag_rows = await db.execute_fetchall("SELECT name FROM tags ORDER BY name")
+        tag_names = [str(r["name"]) for r in tag_rows]
+        assert "python" in tag_names
+        assert "testing" in tag_names
+
+        # Check article_tags
+        at_rows = await db.execute_fetchall(
+            "SELECT tag_id FROM article_tags WHERE article_id = ?", (art_id,)
+        )
+        assert len(at_rows) == 2
+
+    @pytest.mark.asyncio
+    async def test_batching_multiple_batches(self, db: aiosqlite.Connection) -> None:
+        source_id = await _insert_source(db)
+        for i in range(12):
+            await _insert_article(
+                db,
+                source_id,
+                url=f"https://example.com/{i}",
+                title=DISTINCT_TITLES[i],
+            )
+
+        call_count = 0
+
+        async def mock_score(
+            client: object,
+            system_prompt: str,
+            batch_prompt: str,
+            article_ids: list[int],
+        ) -> list[ScoringResult]:
+            nonlocal call_count
+            call_count += 1
+            return [_make_result(6.0) for _ in article_ids]
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch("backend.scoring.pipeline.score_batch", side_effect=mock_score),
+        ):
+            mock_client.return_value = MagicMock()
+            await run_scoring_pipeline()
+
+        # 12 articles / 5 per batch = 3 batches
+        assert call_count == 3
+
+        # All articles scored
+        rows = await db.execute_fetchall(
+            "SELECT COUNT(*) as cnt FROM articles WHERE relevance_score IS NOT NULL"
+        )
+        assert int(rows[0]["cnt"]) == 12

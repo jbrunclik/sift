@@ -17,7 +17,6 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [x] `docs/roadmap.md` (this file)
 - [x] `.claude/agents/implementer.md`, `reviewer.md`, `tester.md`
 - [x] `.claude/commands/feature.md`, `bug.md`, `commit.md`, `improve.md`
-- [x] `.github/workflows/ci.yml` (ruff + mypy + pytest)
 - [x] Directory skeleton: all `__init__.py` files, `frontend/package.json`, `frontend/tsconfig.json`
 
 ## Phase 1: Foundation + RSS Source + Basic UI [DONE]
@@ -46,20 +45,27 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [x] All checks pass: ruff, mypy --strict, pytest (16/16), tsc
 - [x] Deploy: systemd service file (reads HOST/PORT from .env)
 
-## Phase 2: Scoring + Feedback Loop [TODO]
+## Phase 2: Scoring + Feedback Loop [IN PROGRESS]
 
-- [ ] `backend/scoring/pipeline.py` — orchestrate: dedupe → score → store
-- [ ] `backend/scoring/deduplicator.py` — URL normalization + fuzzy title matching
-- [ ] `backend/scoring/scorer.py` — Gemini pointwise scoring (structured JSON output)
-- [ ] `backend/scoring/prompts.py` — all LLM prompt templates
-- [ ] Gemini integration (google-genai, structured JSON output)
+### Scoring pipeline [DONE]
+- [x] `backend/scoring/prompts.py` — system + batch prompt templates (cold-start fallback)
+- [x] `backend/scoring/deduplicator.py` — URL exact + fuzzy title matching (difflib)
+- [x] `backend/scoring/scorer.py` — Gemini batched scoring (structured JSON, score clamping)
+- [x] `backend/scoring/pipeline.py` — orchestrate: dedupe → batch → score → store (concurrent)
+- [x] `backend/scoring/__init__.py` — exports run_scoring_pipeline
+- [x] `backend/scheduler/worker.py` — score_unscored_articles job
+- [x] `backend/main.py` — scoring schedule (every 5 min default)
+- [x] Gemini integration (google-genai, structured JSON output, BatchScoringResponse schema)
+- [x] Tests: prompts (10), deduplicator (10), scorer (10), pipeline (7) — 37 new tests
+- [x] All checks pass: ruff, mypy --strict, pytest (53/53)
+
+### Feedback loop [TODO]
 - [ ] `backend/preferences/cold_start.py` + cold-start wizard frontend
 - [ ] `backend/preferences/tag_weights.py` + `feedback_processor.py`
 - [ ] `backend/api/routes_preferences.py`
 - [ ] Frontend: tag chips, score explanation tooltip
 - [ ] `POST /api/articles/submit-url` for manually submitting missed links
-- [ ] Tests: scorer (mocked Gemini), tag weights, feedback processor
-- [ ] Tests: scoring pipeline, feedback flow integration
+- [ ] Tests: tag weights, feedback processor, feedback flow integration
 
 ## Phase 3: More Sources [TODO]
 
