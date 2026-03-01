@@ -31,7 +31,9 @@ For each article, provide:
 
 Return a JSON array with one result per article, in the same order as presented."""
 
-MAX_CONTENT_CHARS = 2000
+MAX_CONTENT_CHARS = 4000
+HEAD_CHARS = 3000
+TAIL_CHARS = 1000
 
 
 LANGUAGE_NAMES: dict[str, str] = {
@@ -133,7 +135,7 @@ def build_batch_prompt(articles: list[ArticlePromptData]) -> str:
     for i, article in enumerate(articles, 1):
         content = article.content or ""
         if len(content) > MAX_CONTENT_CHARS:
-            content = content[:MAX_CONTENT_CHARS] + "..."
+            content = content[:HEAD_CHARS] + "\n\n[...]\n\n" + content[-TAIL_CHARS:]
 
         section = [f"## Article {i}", f"**Title**: {article.title}"]
         section.append(f"**Source**: {article.source_name}")

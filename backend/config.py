@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     scoring_interval_minutes: int = 5
     scoring_max_concurrent: int = 3
 
+    # Extraction
+    extraction_interval_minutes: int = 2
+    extraction_max_concurrent: int = 5
+    extraction_batch_size: int = 20
+
     # Profile synthesis
     profile_synthesis_interval_hours: int = 6
 

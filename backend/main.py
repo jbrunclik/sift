@@ -34,7 +34,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from apscheduler.triggers.interval import IntervalTrigger
 
         from backend.scheduler.cleanup import run_cleanup
-        from backend.scheduler.worker import fetch_all_sources, score_unscored_articles
+        from backend.scheduler.worker import (
+            extract_unextracted_articles,
+            fetch_all_sources,
+            score_unscored_articles,
+        )
 
         scheduler = AsyncScheduler()
         await scheduler.__aenter__()
@@ -49,14 +53,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             id="score_unscored",
         )
         await scheduler.add_schedule(
+            extract_unextracted_articles,
+            IntervalTrigger(minutes=settings.extraction_interval_minutes),
+            id="extract",
+        )
+        await scheduler.add_schedule(
             run_cleanup,
             IntervalTrigger(hours=24),
             id="cleanup",
         )
         await scheduler.start_in_background()
         logger.info(
-            "Scheduler started (fetch every 30 min, score every %d min, cleanup daily)",
+            "Scheduler started (fetch=30min, score=%dmin, extract=%dmin, cleanup=daily)",
             settings.scoring_interval_minutes,
+            settings.extraction_interval_minutes,
         )
     except Exception:
         logger.exception("Scheduler failed to start — fetching will only work manually")

@@ -158,6 +158,7 @@ async def stats() -> StatsExtended:
         job_intervals: dict[str, int] = {
             "fetch_all": 30,
             "score": settings.scoring_interval_minutes,
+            "extract": settings.extraction_interval_minutes,
             "cleanup": 24 * 60,
         }
 
@@ -444,6 +445,24 @@ async def trigger_score() -> JobTriggerResponse:
 
     _launch_job(run())
     return JobTriggerResponse(status="started", message="Scoring started")
+
+
+@router.post("/jobs/extract")
+async def trigger_extract() -> JobTriggerResponse:
+    if "extract" in _running_jobs:
+        return JobTriggerResponse(status="already_running", message="Extraction is already running")
+    _running_jobs.add("extract")
+
+    async def run() -> None:
+        try:
+            from backend.scheduler.worker import extract_unextracted_articles
+
+            await extract_unextracted_articles()
+        finally:
+            _running_jobs.discard("extract")
+
+    _launch_job(run())
+    return JobTriggerResponse(status="started", message="Extraction started")
 
 
 @router.post("/jobs/cleanup")

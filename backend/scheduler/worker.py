@@ -236,6 +236,49 @@ async def score_unscored_articles() -> None:
         await db.close()
 
 
+async def extract_unextracted_articles() -> None:
+    """Extract full content for articles missing content_full."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO scheduler_runs (job_name, status) VALUES ('extract', 'running')"
+        )
+        run_id = cursor.lastrowid
+        await db.commit()
+    finally:
+        await db.close()
+
+    error_msg = None
+    status = "success"
+    details = "{}"
+    try:
+        from backend.extraction import extract_articles
+
+        stats = await extract_articles()
+        details = json.dumps(stats)
+        if stats.get("failed", 0) > 0:
+            status = "error" if stats.get("success", 0) == 0 else "success"
+            error_msg = f"{stats['failed']} articles failed extraction"
+    except Exception:
+        logger.exception("Extraction pipeline failed")
+        status = "error"
+        error_msg = "Extraction pipeline failed"
+
+    db = await get_db()
+    try:
+        await db.execute(
+            """
+            UPDATE scheduler_runs
+            SET finished_at = datetime('now'), status = ?, details = ?, error_message = ?
+            WHERE id = ?
+            """,
+            (status, details, error_msg, run_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
 def _normalize_url(url: str) -> str:
     """Normalize URL for deduplication."""
     from urllib.parse import parse_qs, urlencode, urlparse, urlunparse

@@ -78,13 +78,13 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [ ] `POST /api/articles/submit-url` for manually submitting missed links
 - [ ] Periodic prose profile synthesis from tag weights + feedback history
 
-### Article content extraction [TODO — high priority]
-- [ ] Fetch actual article content (not just RSS summaries) for better LLM scoring
-- [ ] Content extractor using httpx + readability/trafilatura to get clean article text
-- [ ] Worker pool with concurrency limits (e.g. asyncio.Semaphore) for parallel fetching
-- [ ] Store extracted text in `articles.content_full` column
-- [ ] Update scoring pipeline to prefer `content_full` over `content_snippet` when available
-- [ ] Respect robots.txt and rate-limit per domain
+### Article content extraction [DONE]
+- [x] Fetch actual article content (not just RSS summaries) for better LLM scoring
+- [x] Content extractor using httpx + trafilatura to get clean article text
+- [x] Worker pool with concurrency limits (asyncio.Semaphore) for parallel fetching
+- [x] Store extracted text in `articles.content_full` column
+- [x] Update scoring pipeline to prefer `content_full` over `content_snippet` when available
+- [x] Rate-limit per domain (robots.txt intentionally skipped — see ADR-016)
 
 ## Phase 2.5: UX Overhaul + Operational Improvements [DONE]
 
