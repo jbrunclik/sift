@@ -18,7 +18,7 @@ const NAV_ICONS: Record<string, string> = {
 async function pollIssues(): Promise<void> {
   try {
     const issues = await getIssues();
-    issueCount = issues.fetch_errors + issues.scoring_errors;
+    issueCount = issues.fetch_errors + issues.scoring_errors + issues.auth_truncations;
   } catch {
     // Silently ignore polling errors
   }

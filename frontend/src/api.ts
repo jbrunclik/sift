@@ -1,5 +1,6 @@
 import type {
   Article,
+  AuthIssueEntry,
   CandidateTag,
   CostEntry,
   Feedback,
@@ -9,6 +10,7 @@ import type {
   Source,
   StatsResponse,
   TagWeight,
+  TestAuthResponse,
   UserPreferences,
   VocabularyTag,
 } from "./types";
@@ -165,6 +167,7 @@ export function getIssueDetails(): Promise<{
   scoring_failures: number;
   scoring_retryable: number;
   unscored: number;
+  auth_truncations: number;
 }> {
   return request("/stats/issue-details");
 }
@@ -215,4 +218,13 @@ export function rejectCandidate(tagId: number): Promise<void> {
   return request(`/preferences/vocabulary/candidates/${tagId}`, {
     method: "DELETE",
   });
+}
+
+// Auth testing
+export function testSourceAuth(id: number): Promise<TestAuthResponse> {
+  return request<TestAuthResponse>(`/sources/${id}/test-auth`, { method: "POST" });
+}
+
+export function getAuthIssues(): Promise<AuthIssueEntry[]> {
+  return request<AuthIssueEntry[]>("/stats/auth-issues");
 }

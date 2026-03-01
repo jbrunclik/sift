@@ -22,6 +22,7 @@ class IssuesResponse(BaseModel):
     fetch_errors: int = 0
     scoring_errors: int = 0
     unscored: int = 0
+    auth_truncations: int = 0
 
 
 class CostEntry(BaseModel):
@@ -213,6 +214,7 @@ class IssueDetails(BaseModel):
     scoring_failures: int = 0
     scoring_retryable: int = 0
     unscored: int = 0
+    auth_truncations: int = 0
 
 
 @router.get("/stats/issue-details")
@@ -241,11 +243,23 @@ async def get_issue_details() -> IssueDetails:
                 "SELECT COUNT(*) FROM articles WHERE relevance_score IS NULL AND scored_at IS NULL"
             )
         )
+        auth_truncations = list(
+            await db.execute_fetchall(
+                """
+                SELECT COUNT(*) FROM articles a
+                JOIN sources s ON a.source_id = s.id
+                WHERE a.extraction_status = 'truncated'
+                  AND a.extraction_attempted_at > datetime('now', '-7 days')
+                  AND json_extract(s.config_json, '$.auth_cookie') IS NOT NULL
+                """
+            )
+        )
         return IssueDetails(
             fetch_errors=int(fetch_errors[0][0]),
             scoring_failures=int(scoring_failures[0][0]),
             scoring_retryable=int(scoring_retryable[0][0]),
             unscored=int(unscored[0][0]),
+            auth_truncations=int(auth_truncations[0][0]),
         )
     finally:
         await db.close()
@@ -284,6 +298,46 @@ async def get_scoring_failures() -> list[ScoringFailure]:
                 score_attempts=int(r[4]),
                 scored_at=str(r[5]) if r[5] else None,
                 error=str(r[6]) if r[6] else None,
+            )
+            for r in rows
+        ]
+    finally:
+        await db.close()
+
+
+class AuthIssueEntry(BaseModel):
+    source_id: int
+    source_name: str
+    truncated_count: int
+    latest_article_title: str | None = None
+
+
+@router.get("/stats/auth-issues")
+async def get_auth_issues() -> list[AuthIssueEntry]:
+    """Per-source truncation details for auth-configured sources."""
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall(
+            """
+            SELECT s.id, s.name, COUNT(a.id) as cnt,
+                   (SELECT a2.title FROM articles a2
+                    WHERE a2.source_id = s.id AND a2.extraction_status = 'truncated'
+                    ORDER BY a2.extraction_attempted_at DESC LIMIT 1) as latest_title
+            FROM articles a
+            JOIN sources s ON a.source_id = s.id
+            WHERE a.extraction_status = 'truncated'
+              AND a.extraction_attempted_at > datetime('now', '-7 days')
+              AND json_extract(s.config_json, '$.auth_cookie') IS NOT NULL
+            GROUP BY s.id
+            ORDER BY cnt DESC
+            """
+        )
+        return [
+            AuthIssueEntry(
+                source_id=int(r[0]),
+                source_name=str(r[1]),
+                truncated_count=int(r[2]),
+                latest_article_title=str(r[3]) if r[3] else None,
             )
             for r in rows
         ]
@@ -364,10 +418,22 @@ async def get_issues() -> IssuesResponse:
                 "SELECT COUNT(*) FROM articles WHERE relevance_score IS NULL AND scored_at IS NULL"
             )
         )
+        auth_truncations = list(
+            await db.execute_fetchall(
+                """
+                SELECT COUNT(*) FROM articles a
+                JOIN sources s ON a.source_id = s.id
+                WHERE a.extraction_status = 'truncated'
+                  AND a.extraction_attempted_at > datetime('now', '-7 days')
+                  AND json_extract(s.config_json, '$.auth_cookie') IS NOT NULL
+                """
+            )
+        )
         return IssuesResponse(
             fetch_errors=int(fetch_errors[0][0]),
             scoring_errors=int(scoring_errors[0][0]),
             unscored=int(unscored[0][0]),
+            auth_truncations=int(auth_truncations[0][0]),
         )
     finally:
         await db.close()

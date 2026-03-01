@@ -39,8 +39,9 @@ async def fetch_source(source_id: int) -> None:
         start_time = time.monotonic()
 
         try:
-            async with httpx.AsyncClient() as http_client:
-                config = SourceConfig(str(source_row["config_json"]))
+            config = SourceConfig(str(source_row["config_json"]))
+            client_headers = config.get_auth_headers()
+            async with httpx.AsyncClient(headers=client_headers) as http_client:
                 source = source_cls(config=config, http_client=http_client, source_id=source_id)
                 raw_articles = await source.fetch()
 

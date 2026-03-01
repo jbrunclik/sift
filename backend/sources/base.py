@@ -19,6 +19,22 @@ class SourceConfig:
     def __getitem__(self, key: str) -> Any:
         return self.data[key]
 
+    def has_auth(self) -> bool:
+        """Check if this source has authentication configured."""
+        return bool(self.data.get("auth_cookie") or self.data.get("auth_headers"))
+
+    def get_auth_headers(self) -> dict[str, str]:
+        """Return HTTP headers for authenticated requests."""
+        headers: dict[str, str] = {}
+        cookie = self.data.get("auth_cookie")
+        if cookie:
+            headers["Cookie"] = str(cookie)
+        extra = self.data.get("auth_headers")
+        if isinstance(extra, dict):
+            for k, v in extra.items():
+                headers[str(k)] = str(v)
+        return headers
+
 
 class BaseSource(ABC):
     """Abstract base class for all source plugins."""

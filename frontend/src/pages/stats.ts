@@ -1,4 +1,5 @@
 import {
+  getAuthIssues,
   getCosts,
   getIssueDetails,
   getScoringFailures,
@@ -6,6 +7,7 @@ import {
   getTagWeights,
   triggerJob,
 } from "../api";
+import type { AuthIssueEntry } from "../types";
 import type { CostEntry, StatsResponse } from "../types";
 import { el, formatDate } from "../utils";
 import { showToast } from "../components/toast";
@@ -24,14 +26,16 @@ export function StatsPage(): HTMLElement {
       getTagWeights(),
       getIssueDetails(),
       getScoringFailures(),
-    ]).then(([stats, costs, tags, issueDetails, scoringFailures]) => {
+      getAuthIssues(),
+    ]).then(([stats, costs, tags, issueDetails, scoringFailures, authIssues]) => {
         content.innerHTML = "";
         if (
           issueDetails.fetch_errors > 0 ||
-          issueDetails.scoring_failures > 0
+          issueDetails.scoring_failures > 0 ||
+          issueDetails.auth_truncations > 0
         ) {
           content.appendChild(
-            renderIssuesBanner(issueDetails, scoringFailures, loadStats)
+            renderIssuesBanner(issueDetails, scoringFailures, authIssues, loadStats)
           );
         }
         content.appendChild(renderOverview(stats));
@@ -68,8 +72,10 @@ function renderIssuesBanner(
     scoring_failures: number;
     scoring_retryable: number;
     unscored: number;
+    auth_truncations: number;
   },
   failures: ScoringFailureEntry[],
+  authIssues: AuthIssueEntry[],
   reloadPage: () => void
 ): HTMLElement {
   const section = el("div", { class: "issues-section" });
@@ -85,6 +91,11 @@ function renderIssuesBanner(
   if (details.scoring_failures > 0) {
     parts.push(
       `${details.scoring_failures} scoring failure${details.scoring_failures > 1 ? "s" : ""}`
+    );
+  }
+  if (details.auth_truncations > 0) {
+    parts.push(
+      `${details.auth_truncations} truncated article${details.auth_truncations > 1 ? "s" : ""} (expired cookies?)`
     );
   }
   if (details.unscored > 0) {
@@ -140,6 +151,26 @@ function renderIssuesBanner(
     }
     table.appendChild(tbody);
     section.appendChild(table);
+  }
+
+  // Auth truncation details
+  if (authIssues.length > 0) {
+    const authTable = el("table", { class: "stats-table issues-table" });
+    authTable.innerHTML = `<thead><tr>
+      <th>Source</th><th>Truncated</th><th>Latest Article</th>
+    </tr></thead>`;
+    const authBody = el("tbody", {});
+    for (const ai of authIssues) {
+      const tr = el("tr", {});
+      tr.innerHTML = `
+        <td class="font-medium">${ai.source_name}</td>
+        <td class="text-error">${ai.truncated_count} article${ai.truncated_count > 1 ? "s" : ""}</td>
+        <td class="text-muted">${ai.latest_article_title ?? "\u2014"}</td>
+      `;
+      authBody.appendChild(tr);
+    }
+    authTable.appendChild(authBody);
+    section.appendChild(authTable);
   }
 
   return section;

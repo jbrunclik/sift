@@ -105,8 +105,8 @@ class TestExtractArticles:
         mock_db = AsyncMock()
         mock_db.execute_fetchall = AsyncMock(
             return_value=[
-                (1, "https://example.com/a1"),
-                (2, "https://other.com/a2"),
+                (1, "https://example.com/a1", 1, "snippet a1", '{"feed_url":"x"}', None),
+                (2, "https://other.com/a2", 1, "snippet a2", '{"feed_url":"x"}', None),
             ]
         )
         mock_db.execute = AsyncMock()
@@ -133,7 +133,7 @@ class TestExtractArticles:
         with patch("backend.extraction.extractor.get_db", return_value=mock_db):
             stats = await extract_articles()
 
-        assert stats == {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+        assert stats == {"total": 0, "success": 0, "failed": 0, "skipped": 0, "truncated": 0}
 
 
 class TestPerDomainRateLimiting:

@@ -24,3 +24,4 @@ We record significant architecture and design decisions as ADRs. Each decision g
 | [016](016-article-content-extraction.md) | Article content extraction via trafilatura | Accepted |
 | [017](017-managed-tag-vocabulary.md) | Managed tag vocabulary for scoring | Accepted (supersedes 015) |
 | [018](018-webpage-source-llm-learned-extraction.md) | Web page source with LLM-learned extraction | Accepted |
+| [019](019-per-source-authentication.md) | Per-source authentication with truncation detection | Accepted |

@@ -1,11 +1,13 @@
 import {
   createSource,
   deleteSource,
+  getAuthIssues,
   getSources,
+  testSourceAuth,
   triggerFetch,
   updateSource,
 } from "../api";
-import type { Source } from "../types";
+import type { AuthIssueEntry, Source } from "../types";
 import { el, formatDate } from "../utils";
 import { showModal } from "./modal";
 import { showToast } from "./toast";
@@ -26,6 +28,7 @@ const ICON = {
   brain: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v1a3 3 0 0 0-3 3 3 3 0 0 0 1 2.2A4 4 0 0 0 4 16a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4 4 4 0 0 0-2-3.8A3 3 0 0 0 19 10a3 3 0 0 0-3-3V6a4 4 0 0 0-4-4Z"/><path d="M12 2v20"/></svg>`,
   starOutline: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   starFilled: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  lock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
 };
 
 function getFaviconUrl(source: Source): string | null {
@@ -97,10 +100,13 @@ function formatRuleField(
 export function SourceManager(): HTMLElement {
   const container = el("div", { class: "source-manager" });
   let sources: Source[] = [];
+  let authIssueMap = new Map<number, AuthIssueEntry>();
   let selectedType = "rss";
 
   async function load(): Promise<void> {
-    sources = await getSources();
+    const [s, ai] = await Promise.all([getSources(), getAuthIssues()]);
+    sources = s;
+    authIssueMap = new Map(ai.map((e) => [e.source_id, e]));
     render();
   }
 
@@ -542,6 +548,140 @@ export function SourceManager(): HTMLElement {
 
       wrapper.appendChild(disclosure);
       wrapper.appendChild(panel);
+    }
+
+    // Authentication disclosure (all source types)
+    {
+      const hasAuth = (() => {
+        try {
+          const config = JSON.parse(source.config_json);
+          return Boolean(config.auth_cookie);
+        } catch {
+          return false;
+        }
+      })();
+
+      const authDisclosure = el("div", { class: "source-rules-toggle source-auth-toggle" });
+      const authChevron = el("span", { class: "source-rules-chevron" });
+      authChevron.innerHTML = ICON.chevron;
+      authDisclosure.appendChild(authChevron);
+
+      const lockIcon = el("span", { class: "source-rules-icon" });
+      lockIcon.innerHTML = ICON.lock;
+      authDisclosure.appendChild(lockIcon);
+
+      const authIssue = authIssueMap.get(source.id);
+
+      if (hasAuth) {
+        authDisclosure.appendChild(
+          el("span", { class: "source-rules-label" }, "Authentication")
+        );
+        if (authIssue && authIssue.truncated_count > 0) {
+          authDisclosure.appendChild(
+            el(
+              "span",
+              { class: "source-rules-date source-auth-warning" },
+              `${authIssue.truncated_count} truncated (expired cookies?)`
+            )
+          );
+        } else {
+          authDisclosure.appendChild(
+            el("span", { class: "source-rules-date source-auth-status" }, "Cookies configured")
+          );
+        }
+      } else {
+        authDisclosure.appendChild(
+          el("span", { class: "source-rules-label source-rules-pending" }, "Authentication")
+        );
+        authDisclosure.appendChild(
+          el("span", { class: "source-rules-hint" }, "Not configured")
+        );
+      }
+
+      // Auth panel (hidden by default)
+      const authPanel = el("div", { class: "source-auth-panel" });
+
+      const cookieLabel = el("label", { class: "source-auth-label" }, "Cookie header");
+      authPanel.appendChild(cookieLabel);
+
+      const currentCookie = (() => {
+        try {
+          return JSON.parse(source.config_json).auth_cookie || "";
+        } catch {
+          return "";
+        }
+      })();
+
+      const textarea = document.createElement("textarea");
+      textarea.className = "input source-auth-textarea";
+      textarea.placeholder = "paywall_session=abc; user_id=123";
+      textarea.rows = 3;
+      textarea.value = currentCookie;
+      authPanel.appendChild(textarea);
+
+      const authActions = el("div", { class: "source-auth-actions" });
+
+      const saveBtn = el("button", { class: "btn btn-small btn-primary" }, "Save");
+      saveBtn.addEventListener("click", async () => {
+        try {
+          const config = JSON.parse(source.config_json);
+          const val = textarea.value.trim();
+          if (val) {
+            config.auth_cookie = val;
+          } else {
+            delete config.auth_cookie;
+          }
+          await updateSource(source.id, { config_json: JSON.stringify(config) });
+          showToast("Authentication saved", "success");
+          load();
+        } catch {
+          showToast("Failed to save authentication", "error");
+        }
+      });
+      authActions.appendChild(saveBtn);
+
+      const testBtn = el("button", { class: "btn btn-small" }, "Test");
+      testBtn.addEventListener("click", async () => {
+        testBtn.textContent = "Testing\u2026";
+        testBtn.setAttribute("disabled", "true");
+        try {
+          // Save first so the test uses current textarea value
+          const config = JSON.parse(source.config_json);
+          const val = textarea.value.trim();
+          if (val) {
+            config.auth_cookie = val;
+          } else {
+            delete config.auth_cookie;
+          }
+          await updateSource(source.id, { config_json: JSON.stringify(config) });
+
+          const result = await testSourceAuth(source.id);
+          if (result.status === "ok") {
+            showToast(`Auth OK — ${result.content_length} chars extracted`, "success");
+          } else if (result.status === "truncated") {
+            showToast(`Truncated (${result.content_length} chars) — ${result.message}`, "error");
+          } else {
+            showToast(result.message, "error");
+          }
+        } catch (err) {
+          showToast(`Test failed: ${err}`, "error");
+        } finally {
+          testBtn.textContent = "Test";
+          testBtn.removeAttribute("disabled");
+        }
+      });
+      authActions.appendChild(testBtn);
+
+      authPanel.appendChild(authActions);
+
+      // Toggle behavior
+      authDisclosure.addEventListener("click", () => {
+        const isOpen = wrapper.classList.toggle("source-auth-open");
+        authChevron.classList.toggle("rotated", isOpen);
+      });
+
+      wrapper.appendChild(authDisclosure);
+      wrapper.appendChild(authPanel);
     }
 
     return wrapper;

@@ -82,6 +82,20 @@ export interface IssuesResponse {
   fetch_errors: number;
   scoring_errors: number;
   unscored: number;
+  auth_truncations: number;
+}
+
+export interface AuthIssueEntry {
+  source_id: number;
+  source_name: string;
+  truncated_count: number;
+  latest_article_title: string | null;
+}
+
+export interface TestAuthResponse {
+  status: "ok" | "truncated" | "error";
+  content_length: number;
+  message: string;
 }
 
 export interface CostEntry {

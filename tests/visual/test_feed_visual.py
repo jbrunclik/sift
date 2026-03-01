@@ -638,6 +638,89 @@ async def test_sources_extraction_rules_panel(page: Page, base_url: str) -> None
     await toggle.first.click()
 
 
+@pytest.mark.asyncio
+async def test_sources_auth_toggle(page: Page, base_url: str) -> None:
+    """Every source card shows an authentication disclosure toggle."""
+    await page.goto(f"{base_url}/#/sources")
+    card = page.locator(".source-card")
+    try:
+        await card.first.wait_for(timeout=5000)
+    except Exception:
+        pytest.skip("No sources configured")
+    # Auth toggle should exist on every source card
+    toggle = page.locator(".source-auth-toggle")
+    assert await toggle.count() >= 1
+    # Should have lock icon and label
+    lock = toggle.first.locator(".source-rules-icon")
+    assert await lock.count() == 1
+    label = toggle.first.locator(".source-rules-label")
+    assert await label.count() == 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "sources-auth-toggle.png"), full_page=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_sources_auth_panel(page: Page, base_url: str) -> None:
+    """Clicking the auth toggle expands the authentication panel with textarea and buttons."""
+    await page.goto(f"{base_url}/#/sources")
+    toggle = page.locator(".source-auth-toggle")
+    try:
+        await toggle.first.wait_for(timeout=5000)
+    except Exception:
+        pytest.skip("No sources configured")
+    # Click to expand
+    await toggle.first.click()
+    panel = page.locator(".source-auth-panel")
+    await panel.first.wait_for(state="visible", timeout=2000)
+    # Should have cookie textarea, Save and Test buttons
+    textarea = panel.first.locator("textarea")
+    assert await textarea.count() == 1
+    save_btn = panel.first.locator("button", has_text="Save")
+    test_btn = panel.first.locator("button", has_text="Test")
+    assert await save_btn.count() == 1
+    assert await test_btn.count() == 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "sources-auth-panel.png"), full_page=True
+    )
+    # Click again to collapse
+    await toggle.first.click()
+    await panel.first.wait_for(state="hidden", timeout=2000)
+
+
+@pytest.mark.asyncio
+async def test_sources_auth_independent_toggle(page: Page, base_url: str) -> None:
+    """Auth and extraction rules disclosures toggle independently."""
+    await page.goto(f"{base_url}/#/sources")
+    rules_toggle = page.locator(".source-rules-toggle")
+    try:
+        await rules_toggle.first.wait_for(timeout=5000)
+    except Exception:
+        pytest.skip("No web page sources with extraction rules")
+    # Open both
+    await rules_toggle.first.click()
+    rules_panel = page.locator(".source-rules-panel")
+    await rules_panel.first.wait_for(state="visible", timeout=2000)
+    # Find the auth toggle on the same card
+    card = rules_toggle.first.locator("xpath=ancestor::div[contains(@class,'source-card')]")
+    card_auth_toggle = card.locator(".source-auth-toggle")
+    await card_auth_toggle.click()
+    auth_panel = card.locator(".source-auth-panel")
+    await auth_panel.wait_for(state="visible", timeout=2000)
+    # Both panels should be visible
+    assert await rules_panel.first.is_visible()
+    assert await auth_panel.is_visible()
+    # Close rules — auth should stay open
+    await rules_toggle.first.click()
+    await rules_panel.first.wait_for(state="hidden", timeout=2000)
+    assert await auth_panel.is_visible(), "Auth panel should stay open when rules panel closes"
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "sources-auth-independent.png"), full_page=True
+    )
+    # Clean up
+    await card_auth_toggle.click()
+
+
 # ── Nav bar ────────────────────────────────────────────────
 
 

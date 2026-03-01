@@ -137,6 +137,7 @@ Design decisions accepted (ADRs written). Implementation complete.
 ## Phase 3: More Sources [IN PROGRESS]
 
 - [x] `backend/sources/webpage.py` (generic web page with LLM-learned CSS extraction rules)
+- [x] Per-source authentication with paywall truncation detection (ADR-019)
 - [ ] `backend/sources/hackernews.py` (Firebase REST API)
 - [ ] `backend/sources/youtube.py` (YouTube RSS feeds)
 - [ ] `backend/sources/reddit.py` (httpx-based, asyncpraw has dep conflicts)

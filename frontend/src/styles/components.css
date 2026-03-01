@@ -880,6 +880,52 @@
   margin-top: var(--space-2);
 }
 
+/* Auth disclosure panel (independent toggle from extraction rules) */
+.source-auth-panel {
+  display: none;
+  padding: var(--space-5) 1.125rem var(--space-6);
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-bg);
+}
+
+.source-auth-open .source-auth-panel {
+  display: block;
+}
+
+.source-auth-label {
+  display: block;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-2);
+}
+
+.source-auth-textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  resize: vertical;
+  min-height: 3rem;
+  margin-bottom: var(--space-4);
+  box-sizing: border-box;
+}
+
+.source-auth-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.source-auth-status {
+  color: var(--color-success);
+}
+
+.source-auth-warning {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
 /* ===== Issues Banner ===== */
 .issues-section {
   margin-bottom: var(--space-7);

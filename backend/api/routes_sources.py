@@ -169,8 +169,9 @@ async def trigger_fetch(source_id: int) -> FetchLog:
         start_time = time.monotonic()
 
         try:
-            async with httpx.AsyncClient() as http_client:
-                config = SourceConfig(str(source_row["config_json"]))
+            config = SourceConfig(str(source_row["config_json"]))
+            client_headers = config.get_auth_headers()
+            async with httpx.AsyncClient(headers=client_headers) as http_client:
                 source = source_cls(config=config, http_client=http_client, source_id=source_id)
                 raw_articles = await source.fetch()
 
@@ -247,6 +248,95 @@ async def trigger_fetch(source_id: int) -> FetchLog:
 
     finally:
         await db.close()
+
+
+class TestAuthResponse(BaseModel):
+    status: str  # "ok" | "truncated" | "error"
+    content_length: int = 0
+    message: str = ""
+
+
+@router.post("/{source_id}/test-auth")
+async def test_source_auth(source_id: int) -> TestAuthResponse:
+    """Test authentication by fetching a recent article with configured cookies."""
+    import asyncio
+
+    import httpx
+    import trafilatura
+
+    from backend.sources.base import SourceConfig as _SourceConfig
+
+    db = await get_db()
+    try:
+        rows = list(await db.execute_fetchall("SELECT * FROM sources WHERE id = ?", (source_id,)))
+        if not rows:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        source_row = dict(rows[0])
+        config = _SourceConfig(str(source_row["config_json"]))
+        if not config.has_auth():
+            return TestAuthResponse(
+                status="error", message="No authentication configured for this source"
+            )
+
+        # Pick a recent article URL
+        article_rows = list(
+            await db.execute_fetchall(
+                """
+                SELECT url, content_snippet FROM articles
+                WHERE source_id = ?
+                ORDER BY published_at DESC
+                LIMIT 1
+                """,
+                (source_id,),
+            )
+        )
+        if not article_rows:
+            return TestAuthResponse(
+                status="error", message="No articles found — fetch first"
+            )
+
+        test_url = str(article_rows[0][0])
+        snippet = str(article_rows[0][1]) if article_rows[0][1] else None
+        raw_avg = source_row.get("avg_content_length")
+        avg_length = float(raw_avg) if raw_avg else None
+    finally:
+        await db.close()
+
+    # Fetch with auth cookies
+    headers = {"User-Agent": "Sift/0.1 (personal news aggregator)", **config.get_auth_headers()}
+    try:
+        async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+            resp = await client.get(test_url, timeout=15.0)
+            resp.raise_for_status()
+    except (httpx.HTTPError, httpx.TimeoutException) as e:
+        return TestAuthResponse(status="error", message=f"Fetch failed: {e}")
+
+    try:
+        text = await asyncio.to_thread(trafilatura.extract, resp.text)
+    except Exception as e:
+        return TestAuthResponse(status="error", message=f"Extraction failed: {e}")
+
+    if not text:
+        return TestAuthResponse(status="error", content_length=0, message="No content extracted")
+
+    content_length = len(text)
+
+    # Check truncation
+    from backend.extraction.extractor import _detect_truncation
+
+    if _detect_truncation(text, snippet, avg_length):
+        return TestAuthResponse(
+            status="truncated",
+            content_length=content_length,
+            message="Content appears truncated — cookies may be expired",
+        )
+
+    return TestAuthResponse(
+        status="ok",
+        content_length=content_length,
+        message="Full content extracted successfully",
+    )
 
 
 def _normalize_url(url: str) -> str:
