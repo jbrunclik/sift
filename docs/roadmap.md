@@ -78,6 +78,51 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [ ] `POST /api/articles/submit-url` for manually submitting missed links
 - [ ] Periodic prose profile synthesis from tag weights + feedback history
 
+### Article content extraction [TODO — high priority]
+- [ ] Fetch actual article content (not just RSS summaries) for better LLM scoring
+- [ ] Content extractor using httpx + readability/trafilatura to get clean article text
+- [ ] Worker pool with concurrency limits (e.g. asyncio.Semaphore) for parallel fetching
+- [ ] Store extracted text in `articles.content_full` column
+- [ ] Update scoring pipeline to prefer `content_full` over `content_snippet` when available
+- [ ] Respect robots.txt and rate-limit per domain
+
+## Phase 2.5: UX Overhaul + Operational Improvements [DONE]
+
+Design decisions accepted (ADRs written). Implementation complete.
+
+### Backend
+- [x] Summary language support (migration 003, prompt changes, preferences API)
+- [x] Source categories (migration 004, CRUD, autocomplete)
+- [x] Adaptive fetch intervals (EMA tracking, auto-adjust 10–360 min)
+- [x] LLM cost tracking (scoring_logs table, per-model pricing, monthly stats)
+- [x] Tag consistency (top 50 existing tags seeded into LLM prompt)
+- [x] Vote marks articles as read
+- [x] Daily cleanup (articles > 90 days, orphan tags, old logs)
+- [x] Scheduler run tracking (scheduler_runs table, per-job status/details)
+- [x] Scoring failure tracking (score_attempts, error reasons, force-retry API)
+- [x] Gemini 429 retry with exponential backoff (scorer.py)
+- [x] Migration runner fix: statement-by-statement execution, trigger support
+
+### Frontend
+- [x] Inbox behavior: curated + unread default, training mode toggle
+- [x] Card exit animation on vote/read/click
+- [x] Undo toast on vote/read
+- [x] Keyboard shortcuts (j/k/u/d/e/m/o/t/?)
+- [x] Click-on-article = upvote
+- [x] Custom modal dialogs (replaces browser confirm())
+- [x] Premium stats page: overview cards, score distribution chart, source health, LLM costs, tag cloud
+- [x] Background jobs table with next scheduled run, run buttons, detail pills
+- [x] Scoring failures table with error details, force-retry
+- [x] Nav badge for active issues
+- [x] Tab title with unread count: `[N] Sift`
+- [x] Source category editing with pencil icon + autocomplete
+- [x] Score badge: subtle color-mix style
+- [x] "Why?" button as info icon toggle
+- [x] Tag weights table with visual bars
+- [x] Summary language dropdown in preferences
+- [x] SPA router cleanup (MutationObserver for event listener removal)
+- [x] Consistent toolbar height (36px CSS variable)
+
 ## Phase 3: More Sources [TODO]
 
 - [ ] `backend/sources/hackernews.py` (Firebase REST API)
@@ -92,7 +137,7 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [ ] `backend/mcp/server.py` (FastMCP with all tools + resources)
 - [ ] `backend/preferences/profile_synthesizer.py` (scheduled every 6h)
 - [ ] Preference decay, tag pruning, feedback-weighted rescoring
-- [ ] Frontend: stats page with fetch logs, source health details
+- [x] Frontend: stats page with fetch logs, source health details (done in Phase 2.5)
 - [ ] MCP integration tests
 
 ## Phase 5: Polish + Deploy [TODO]
@@ -102,9 +147,10 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [ ] Systemd timer for scoring/evaluation pipeline
 - [ ] SQLite backup via systemd timer (daily, keep 7 days)
 - [ ] E2E tests (Playwright browser flows)
-- [ ] Visual regression tests (screenshot baselines)
-- [ ] Error handling: graceful Gemini degradation, retry logic, rate limiting
-- [ ] Batch scoring optimization (concurrent Gemini calls)
+- [x] Visual regression tests (Playwright screenshot tests for feed, stats, preferences, modals)
+- [x] Error handling: Gemini 429 retry with exponential backoff, scoring failure visibility
+- [x] Batch scoring: concurrent with semaphore (configurable max_concurrent)
+- [ ] GitHub CI pipeline (lint, typecheck, test on push/PR)
 
 ---
 

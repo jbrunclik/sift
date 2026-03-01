@@ -25,9 +25,24 @@ export function el<K extends keyof HTMLElementTagNameMap>(
 
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return "";
-  const d = new Date(dateStr);
+  // SQLite stores UTC dates without timezone suffix — ensure JS parses as UTC
+  const normalized = dateStr.endsWith("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z";
+  const d = new Date(normalized);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
+
+  // Future dates
+  if (diffMs < 0) {
+    const futureMins = Math.floor(-diffMs / 60000);
+    if (futureMins < 1) return "now";
+    if (futureMins < 60) return `in ${futureMins}m`;
+    const futureHrs = Math.floor(futureMins / 60);
+    if (futureHrs < 24) return `in ${futureHrs}h`;
+    const futureDays = Math.floor(futureHrs / 24);
+    return `in ${futureDays}d`;
+  }
+
+  // Past dates
   const diffMin = Math.floor(diffMs / 60000);
   const diffHr = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHr / 24);

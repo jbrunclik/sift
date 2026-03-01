@@ -4,6 +4,7 @@ import sqlite3
 import time
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from backend.database import get_db
 from backend.models import FetchLog, Source, SourceCreate
@@ -43,8 +44,9 @@ async def create_source(source: SourceCreate) -> Source:
         cursor = await db.execute(
             """
             INSERT INTO sources
-                (name, slug, source_type, config_json, enabled, fetch_interval_minutes)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (name, slug, source_type, config_json, enabled, fetch_interval_minutes,
+                 category)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 source.name,
@@ -53,6 +55,7 @@ async def create_source(source: SourceCreate) -> Source:
                 source.config_json,
                 int(source.enabled),
                 source.fetch_interval_minutes,
+                source.category,
             ),
         )
         await db.commit()
@@ -60,6 +63,50 @@ async def create_source(source: SourceCreate) -> Source:
         rows = list(
             await db.execute_fetchall("SELECT * FROM sources WHERE id = ?", (cursor.lastrowid,))
         )
+        return Source(**dict(rows[0]))
+    finally:
+        await db.close()
+
+
+class SourceUpdate(BaseModel):
+    category: str | None = None
+    name: str | None = None
+    enabled: bool | None = None
+    fetch_interval_minutes: int | None = None
+
+
+@router.patch("/{source_id}")
+async def update_source(source_id: int, data: SourceUpdate) -> Source:
+    db = await get_db()
+    try:
+        rows = list(await db.execute_fetchall("SELECT * FROM sources WHERE id = ?", (source_id,)))
+        if not rows:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        updates: list[str] = []
+        params: list[object] = []
+        if data.category is not None:
+            updates.append("category = ?")
+            params.append(data.category)
+        if data.name is not None:
+            updates.append("name = ?")
+            params.append(data.name)
+        if data.enabled is not None:
+            updates.append("enabled = ?")
+            params.append(int(data.enabled))
+        if data.fetch_interval_minutes is not None:
+            updates.append("fetch_interval_minutes = ?")
+            params.append(data.fetch_interval_minutes)
+
+        if updates:
+            params.append(source_id)
+            await db.execute(
+                f"UPDATE sources SET {', '.join(updates)} WHERE id = ?",
+                tuple(params),
+            )
+            await db.commit()
+
+        rows = list(await db.execute_fetchall("SELECT * FROM sources WHERE id = ?", (source_id,)))
         return Source(**dict(rows[0]))
     finally:
         await db.close()

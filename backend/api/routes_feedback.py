@@ -32,6 +32,12 @@ async def create_feedback(feedback: FeedbackCreate) -> Feedback:
             """,
             (feedback.article_id, feedback.rating),
         )
+        # Vote marks article as read
+        if feedback.rating != 0:
+            await db.execute(
+                "UPDATE articles SET is_read = 1 WHERE id = ?",
+                (feedback.article_id,),
+            )
         await process_feedback(db, feedback.article_id, feedback.rating)
         await db.commit()
 

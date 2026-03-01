@@ -14,3 +14,10 @@ We record significant architecture and design decisions as ADRs. Each decision g
 | [006](006-systemd-user-units.md) | User systemd units for deployment | Accepted |
 | [007](007-vanilla-typescript-frontend.md) | Vanilla TypeScript frontend (no framework) | Accepted |
 | [008](008-conventional-commits.md) | Conventional Commits | Accepted |
+| [009](009-inbox-feed-behavior.md) | Inbox feed behavior | Accepted |
+| [010](010-multilingual-summaries.md) | Multilingual summaries | Accepted |
+| [011](011-cost-tracking.md) | LLM cost tracking | Accepted |
+| [012](012-source-categories.md) | Free-text source categories | Accepted |
+| [013](013-adaptive-fetch.md) | Adaptive fetch intervals | Accepted |
+| [014](014-data-cleanup.md) | Daily data cleanup | Accepted |
+| [015](015-tag-consistency.md) | Tag consistency via LLM prompt seeding | Accepted |

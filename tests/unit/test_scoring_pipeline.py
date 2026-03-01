@@ -4,7 +4,7 @@ import aiosqlite
 import pytest
 
 from backend.scoring.pipeline import run_scoring_pipeline
-from backend.scoring.scorer import ScoringError, ScoringResult
+from backend.scoring.scorer import ScoringBatchResult, ScoringError, ScoringResult
 
 # Distinct titles that won't fuzzy-match each other (< 0.80 similarity)
 DISTINCT_TITLES = [
@@ -90,7 +90,9 @@ class TestRunScoringPipeline:
             patch("backend.scoring.pipeline.score_batch", new_callable=AsyncMock) as mock_score,
         ):
             mock_client.return_value = MagicMock()
-            mock_score.return_value = results
+            mock_score.return_value = ScoringBatchResult(
+                results=results, tokens_in=100, tokens_out=200
+            )
 
             await run_scoring_pipeline()
 
@@ -174,7 +176,9 @@ class TestRunScoringPipeline:
         ):
             mock_client.return_value = MagicMock()
             # Only 1 result because dedup merges into 1 group
-            mock_score.return_value = [_make_result(9.0)]
+            mock_score.return_value = ScoringBatchResult(
+                results=[_make_result(9.0)], tokens_in=50, tokens_out=100
+            )
 
             await run_scoring_pipeline()
 
@@ -199,7 +203,11 @@ class TestRunScoringPipeline:
             patch("backend.scoring.pipeline.score_batch", new_callable=AsyncMock) as mock_score,
         ):
             mock_client.return_value = MagicMock()
-            mock_score.return_value = [_make_result(7.0, ["python", "testing"])]
+            mock_score.return_value = ScoringBatchResult(
+                results=[_make_result(7.0, ["python", "testing"])],
+                tokens_in=50,
+                tokens_out=100,
+            )
 
             await run_scoring_pipeline()
 
@@ -233,10 +241,14 @@ class TestRunScoringPipeline:
             system_prompt: str,
             batch_prompt: str,
             article_ids: list[int],
-        ) -> list[ScoringResult]:
+        ) -> ScoringBatchResult:
             nonlocal call_count
             call_count += 1
-            return [_make_result(6.0) for _ in article_ids]
+            return ScoringBatchResult(
+                results=[_make_result(6.0) for _ in article_ids],
+                tokens_in=50,
+                tokens_out=100,
+            )
 
         p_client, p_db, p_close = _patch_pipeline(db)
         with (

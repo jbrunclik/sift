@@ -28,10 +28,13 @@ class Settings(BaseSettings):
 
     # Scoring
     scoring_interval_minutes: int = 5
-    scoring_max_concurrent: int = 10
+    scoring_max_concurrent: int = 3
 
     # Profile synthesis
     profile_synthesis_interval_hours: int = 6
+
+    # Cleanup
+    article_retention_days: int = 90
 
     @property
     def database_dir(self) -> Path:

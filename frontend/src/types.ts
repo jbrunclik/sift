@@ -36,6 +36,7 @@ export interface Source {
   last_fetched_at: string | null;
   created_at: string;
   updated_at: string;
+  category: string;
 }
 
 export interface Feedback {
@@ -61,6 +62,34 @@ export interface StatsResponse {
   positive_feedback: number;
   negative_feedback: number;
   sources: Record<string, unknown>[];
+  score_distribution: number[];
+  inbox_count: number;
+  scheduler_jobs: SchedulerJobStatus[];
+}
+
+export interface SchedulerJobStatus {
+  job_name: string;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_details: string | null;
+  last_error: string | null;
+  interval_minutes: number | null;
+  next_run_at: string | null;
+}
+
+export interface IssuesResponse {
+  fetch_errors: number;
+  scoring_errors: number;
+  unscored: number;
+}
+
+export interface CostEntry {
+  month: string;
+  model: string;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  batches: number;
 }
 
 export interface UserPreferences {
@@ -68,6 +97,7 @@ export interface UserPreferences {
   interests: string[];
   tag_weights: Record<string, number>;
   profile_version: number;
+  summary_language: string;
 }
 
 export interface TagWeight {

@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 import aiosqlite
@@ -37,8 +38,74 @@ async def get_db() -> aiosqlite.Connection:
     return db
 
 
+def _split_sql(sql: str) -> list[str]:
+    """Split a SQL script into individual statements.
+
+    Handles semicolons inside string literals, CREATE TRIGGER BEGIN...END blocks,
+    and skips comment-only/blank lines.
+    """
+    statements: list[str] = []
+    current: list[str] = []
+    in_string = False
+    quote_char = ""
+    in_trigger = False
+
+    for char in sql:
+        if in_string:
+            current.append(char)
+            if char == quote_char:
+                in_string = False
+        elif char in ("'", '"'):
+            in_string = True
+            quote_char = char
+            current.append(char)
+        elif char == ";":
+            current.append(char)
+            text_so_far = "".join(current)
+            # Check if this END; closes a trigger block
+            if in_trigger and re.search(r"\bEND\s*;$", text_so_far, re.IGNORECASE):
+                in_trigger = False
+                stmt = text_so_far.strip()
+                stmt = re.sub(r"--[^\n]*", "", stmt).strip()
+                if stmt:
+                    statements.append(stmt)
+                current = []
+            elif not in_trigger:
+                stmt = text_so_far.strip()
+                stmt = re.sub(r"--[^\n]*", "", stmt).strip()
+                if stmt:
+                    # Check if we just started a trigger (has BEGIN but no END yet)
+                    if re.search(r"\bBEGIN\b", stmt, re.IGNORECASE) and re.search(
+                        r"CREATE\s+TRIGGER\b", stmt, re.IGNORECASE
+                    ):
+                        in_trigger = True
+                    else:
+                        # Remove trailing semicolon for db.execute()
+                        if stmt.endswith(";"):
+                            stmt = stmt[:-1].strip()
+                        if stmt:
+                            statements.append(stmt)
+                        current = []
+                else:
+                    current = []
+        else:
+            current.append(char)
+
+    # Handle final statement without trailing semicolon
+    stmt = "".join(current).strip()
+    stmt = re.sub(r"--[^\n]*", "", stmt).strip()
+    if stmt:
+        statements.append(stmt)
+
+    return statements
+
+
 async def run_migrations(db: aiosqlite.Connection) -> None:
-    """Run all pending SQL migrations in order."""
+    """Run all pending SQL migrations in order.
+
+    Executes each statement individually (not via executescript) so errors
+    propagate correctly through aiosqlite's threading layer.
+    """
     await db.execute(
         "CREATE TABLE IF NOT EXISTS _migrations ("
         "  filename TEXT PRIMARY KEY,"
@@ -55,7 +122,9 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         if migration_file.name not in applied:
             logger.info("Applying migration: %s", migration_file.name)
             sql = migration_file.read_text()
-            await db.executescript(sql)
+            for statement in _split_sql(sql):
+                await db.execute(statement)
+            await db.commit()
             await db.execute(
                 "INSERT INTO _migrations (filename) VALUES (?)", (migration_file.name,)
             )

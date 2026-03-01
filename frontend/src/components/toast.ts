@@ -12,15 +12,30 @@ function getContainer(): HTMLElement {
 
 export function showToast(
   message: string,
-  type: "success" | "error" | "info" = "info"
+  type: "success" | "error" | "info" = "info",
+  action?: { label: string; onClick: () => void }
 ): void {
   const container = getContainer();
-  const toast = el("div", { class: `toast toast-${type}` }, message);
+  const toast = el("div", { class: `toast toast-${type}` });
+
+  const msgSpan = el("span", { class: "toast-message" }, message);
+  toast.appendChild(msgSpan);
+
+  if (action) {
+    const actionBtn = el("button", { class: "toast-action" }, action.label);
+    actionBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      action.onClick();
+      toast.remove();
+    });
+    toast.appendChild(actionBtn);
+  }
+
   container.appendChild(toast);
 
-  // Auto-remove after 3s
+  // Auto-remove after 5s
   setTimeout(() => {
     toast.classList.add("toast-exit");
     setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  }, 5000);
 }

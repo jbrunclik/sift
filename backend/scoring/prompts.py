@@ -25,7 +25,7 @@ quality signals:
 
 For each article, provide:
 - relevance_score: float 0-10 (10 = extremely relevant/high-quality)
-- summary: 1-2 sentence summary of the article
+- summary: 2-3 sentence summary capturing the key points of the article
 - explanation: brief reason for the score
 - tags: 2-5 lowercase topic tags
 
@@ -34,10 +34,18 @@ Return a JSON array with one result per article, in the same order as presented.
 MAX_CONTENT_CHARS = 2000
 
 
+LANGUAGE_NAMES: dict[str, str] = {
+    "en": "English",
+    "cs": "Czech",
+}
+
+
 def build_system_prompt(
     prose_profile: str,
     tag_weights_json: str,
     interests_json: str,
+    summary_language: str = "en",
+    existing_tags: list[str] | None = None,
 ) -> str:
     """Build the system prompt incorporating the user profile.
 
@@ -50,8 +58,27 @@ def build_system_prompt(
     with contextlib.suppress(json.JSONDecodeError, TypeError):
         interests = json.loads(interests_json) if interests_json else []
 
+    language_name = LANGUAGE_NAMES.get(summary_language, summary_language)
+    language_instruction = (
+        f"Write all summaries in {language_name}." if summary_language != "en" else ""
+    )
+    tag_reuse_instruction = ""
+    if existing_tags:
+        tag_reuse_instruction = (
+            "When assigning tags, prefer reusing these existing tags where applicable: "
+            f"{', '.join(existing_tags)}. Only create new tags when no existing tag fits."
+        )
+
     if not prose_profile and not tag_weights and not interests:
-        return COLD_START_SYSTEM_PROMPT
+        prompt = COLD_START_SYSTEM_PROMPT
+        extra: list[str] = []
+        if language_instruction:
+            extra.append(language_instruction)
+        if tag_reuse_instruction:
+            extra.append(tag_reuse_instruction)
+        if extra:
+            prompt += "\n\n" + " ".join(extra)
+        return prompt
 
     parts = [
         "You are a relevance scoring assistant for a personal news aggregator called Sift.",
@@ -74,8 +101,7 @@ def build_system_prompt(
             parts.append(f"- {tag}: {weight:.1f}")
         parts.append("")
 
-    parts.append(
-        """\
+    instructions = """\
 ## Instructions
 
 Score each article based on how relevant it is to this user's interests and \
@@ -83,12 +109,20 @@ preferences. Consider both the topic match and content quality.
 
 For each article, provide:
 - relevance_score: float 0-10 (10 = extremely relevant)
-- summary: 1-2 sentence summary of the article
+- summary: 2-3 sentence summary capturing the key points of the article
 - explanation: brief reason for the score referencing the user's profile
-- tags: 2-5 lowercase topic tags
-
-Return a JSON array with one result per article, in the same order as presented."""
+- tags: 2-5 lowercase topic tags"""
+    extra_instructions: list[str] = []
+    if language_instruction:
+        extra_instructions.append(language_instruction)
+    if tag_reuse_instruction:
+        extra_instructions.append(tag_reuse_instruction)
+    if extra_instructions:
+        instructions += "\n" + " ".join(extra_instructions)
+    instructions += (
+        "\n\nReturn a JSON array with one result per article, in the same order as presented."
     )
+    parts.append(instructions)
 
     return "\n".join(parts)
 

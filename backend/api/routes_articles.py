@@ -89,10 +89,13 @@ async def list_articles(
         conditions = ["a.is_hidden = 0"]
         args: list[object] = []
 
+        # Always exclude unscored articles — they're not ready for the user
+        conditions.append("a.relevance_score IS NOT NULL")
+
         # Apply score filtering:
-        # - If searching, show all results regardless of score
+        # - If searching, show all scored results regardless of score
         # - If explicit min_score provided, use that
-        # - If show_all, show everything (scored or not)
+        # - If show_all (training mode), show all scored articles
         # - Default: curated feed — only scored articles above threshold
         if params.search:
             conditions.append("a.id IN (SELECT rowid FROM articles_fts WHERE articles_fts MATCH ?)")

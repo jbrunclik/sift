@@ -3,12 +3,15 @@ import type { Article } from "../types";
 import { el } from "../utils";
 import { ArticleCard } from "./article-card";
 
-export function ArticleList(params?: {
+export interface ArticleListOptions {
   source_slug?: string;
   search?: string;
   show_all?: boolean;
   unread?: boolean;
-}): HTMLElement {
+  onInboxCount?: (count: number) => void;
+}
+
+export function ArticleList(params?: ArticleListOptions): HTMLElement {
   const container = el("div", { class: "article-list" });
   let articles: Article[] = [];
   let offset = 0;
@@ -16,6 +19,7 @@ export function ArticleList(params?: {
   let loading = false;
   let hasMore = true;
   let sentinel: HTMLElement | null = null;
+  let focusedIndex = -1;
 
   async function loadMore(): Promise<void> {
     if (loading || !hasMore) return;
@@ -43,6 +47,30 @@ export function ArticleList(params?: {
     }
   }
 
+  function removeArticle(card: HTMLElement, article: Article): void {
+    const idx = articles.indexOf(article);
+    if (idx >= 0) articles.splice(idx, 1);
+    card.remove();
+
+    // Update inbox count
+    params?.onInboxCount?.(articles.length);
+
+    // Focus management: move to next card, or previous
+    const cards = container.querySelectorAll<HTMLElement>(".article-card:not(.exiting)");
+    if (cards.length > 0) {
+      const newIdx = Math.min(idx, cards.length - 1);
+      focusedIndex = newIdx;
+      cards[newIdx].classList.add("focused");
+      cards[newIdx].scrollIntoView({ block: "nearest" });
+    } else {
+      focusedIndex = -1;
+      // Check if empty
+      if (articles.length === 0 && !hasMore) {
+        render();
+      }
+    }
+  }
+
   function render(): void {
     // Remove all children except the sentinel
     while (container.firstChild) {
@@ -51,32 +79,73 @@ export function ArticleList(params?: {
     }
 
     if (articles.length === 0 && !loading) {
-      const empty = el(
-        "div",
-        { class: "empty-state" },
-        "Nothing curated yet. Add sources and wait for scoring, or click \"Show all\" to browse."
+      const empty = el("div", { class: "empty-state" });
+      empty.appendChild(el("div", { class: "empty-icon" }, "\uD83D\uDCED"));
+      empty.appendChild(
+        el(
+          "div",
+          { class: "empty-text" },
+          "All caught up! No new articles to show."
+        )
       );
       container.insertBefore(empty, sentinel);
       return;
     }
 
-    // Insert cards before the sentinel
-    for (const article of articles) {
-      container.insertBefore(ArticleCard(article, () => render()), sentinel);
-    }
+    params?.onInboxCount?.(articles.length);
 
-    if (hasMore && !sentinel) {
-      const loadMoreBtn = el(
-        "button",
-        { class: "btn-load-more" },
-        "Load more"
+    for (const article of articles) {
+      container.insertBefore(
+        ArticleCard(article, {
+          onUpdate: () => render(),
+          onExit: (card, art) => removeArticle(card, art),
+        }),
+        sentinel
       );
-      loadMoreBtn.addEventListener("click", () => loadMore());
-      container.insertBefore(loadMoreBtn, sentinel);
     }
   }
 
-  // Create sentinel once, keep it alive across renders
+  // Focus management for keyboard navigation
+  function getFocusableCards(): HTMLElement[] {
+    return Array.from(
+      container.querySelectorAll<HTMLElement>(".article-card:not(.exiting)")
+    );
+  }
+
+  function setFocused(idx: number): void {
+    const cards = getFocusableCards();
+    if (cards.length === 0) return;
+    // Clear previous focus
+    for (const c of cards) c.classList.remove("focused");
+    focusedIndex = Math.max(0, Math.min(idx, cards.length - 1));
+    const card = cards[focusedIndex];
+    card.classList.add("focused");
+    card.scrollIntoView({ block: "nearest" });
+  }
+
+  function getFocusedArticle(): Article | null {
+    const cards = getFocusableCards();
+    if (focusedIndex < 0 || focusedIndex >= cards.length) return null;
+    const id = Number(cards[focusedIndex].dataset.articleId);
+    return articles.find((a) => a.id === id) ?? null;
+  }
+
+  function getFocusedCard(): HTMLElement | null {
+    const cards = getFocusableCards();
+    if (focusedIndex < 0 || focusedIndex >= cards.length) return null;
+    return cards[focusedIndex];
+  }
+
+  // Expose navigation API for keyboard shortcuts
+  container.dataset.listId = "article-list";
+  (container as unknown as Record<string, unknown>).__list = {
+    moveDown: () => setFocused(focusedIndex + 1),
+    moveUp: () => setFocused(Math.max(0, focusedIndex - 1)),
+    getFocusedArticle,
+    getFocusedCard,
+  };
+
+  // Create sentinel once
   sentinel = el("div", { class: "scroll-sentinel" });
   container.appendChild(sentinel);
 

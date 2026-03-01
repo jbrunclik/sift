@@ -1,8 +1,10 @@
 import type {
   Article,
+  CostEntry,
   Feedback,
   FetchLog,
   HealthResponse,
+  IssuesResponse,
   Source,
   StatsResponse,
   TagWeight,
@@ -71,10 +73,21 @@ export function createSource(source: {
   slug: string;
   source_type: string;
   config_json: string;
+  category?: string;
 }): Promise<Source> {
   return request<Source>("/sources", {
     method: "POST",
     body: JSON.stringify(source),
+  });
+}
+
+export function updateSource(
+  id: number,
+  data: { category?: string; name?: string; enabled?: boolean; fetch_interval_minutes?: number }
+): Promise<Source> {
+  return request<Source>(`/sources/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
 }
 
@@ -103,7 +116,7 @@ export function getPreferences(): Promise<UserPreferences> {
 }
 
 export function updatePreferences(
-  data: { prose_profile?: string; interests?: string[] }
+  data: { prose_profile?: string; interests?: string[]; summary_language?: string }
 ): Promise<UserPreferences> {
   return request<UserPreferences>("/preferences", {
     method: "PUT",
@@ -128,4 +141,34 @@ export function getHealth(): Promise<HealthResponse> {
 
 export function getStats(): Promise<StatsResponse> {
   return request<StatsResponse>("/stats");
+}
+
+export function getIssues(): Promise<IssuesResponse> {
+  return request<IssuesResponse>("/stats/issues");
+}
+
+export function getCosts(): Promise<CostEntry[]> {
+  return request<CostEntry[]>("/stats/costs");
+}
+
+// Job triggers
+export function triggerJob(
+  job: "fetch" | "score" | "cleanup" | "retry-scoring" | "force-retry-scoring"
+): Promise<{ status: string; message: string }> {
+  return request(`/jobs/${job}`, { method: "POST" });
+}
+
+export function getIssueDetails(): Promise<{
+  fetch_errors: number;
+  scoring_failures: number;
+  scoring_retryable: number;
+  unscored: number;
+}> {
+  return request("/stats/issue-details");
+}
+
+export function getScoringFailures(): Promise<
+  { id: number; title: string; url: string; source_name: string; score_attempts: number; scored_at: string | null; error: string | null }[]
+> {
+  return request("/stats/scoring-failures");
 }

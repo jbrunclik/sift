@@ -17,6 +17,13 @@ def _mock_client(parsed: object = None, text: str | None = None) -> MagicMock:
     response = MagicMock()
     response.parsed = parsed
     response.text = text
+    response.usage_metadata = MagicMock()
+    response.usage_metadata.prompt_token_count = 100
+    response.usage_metadata.candidates_token_count = 200
+    # Simulate a normal completion (finish_reason = STOP)
+    candidate = MagicMock()
+    candidate.finish_reason = "STOP"
+    response.candidates = [candidate]
 
     client = MagicMock()
     client.aio.models.generate_content = AsyncMock(return_value=response)
@@ -43,11 +50,11 @@ class TestScoreBatch:
         batch_resp = _make_batch_response([7.5, 3.0])
         client = _mock_client(parsed=batch_resp)
 
-        results = await score_batch(client, "system", "batch", [1, 2])
+        batch_result = await score_batch(client, "system", "batch", [1, 2])
 
-        assert len(results) == 2
-        assert results[0].relevance_score == 7.5
-        assert results[1].relevance_score == 3.0
+        assert len(batch_result.results) == 2
+        assert batch_result.results[0].relevance_score == 7.5
+        assert batch_result.results[1].relevance_score == 3.0
         client.aio.models.generate_content.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -66,10 +73,10 @@ class TestScoreBatch:
         )
         client = _mock_client(parsed=None, text=text)
 
-        results = await score_batch(client, "system", "batch", [1])
+        batch_result = await score_batch(client, "system", "batch", [1])
 
-        assert len(results) == 1
-        assert results[0].relevance_score == 8.0
+        assert len(batch_result.results) == 1
+        assert batch_result.results[0].relevance_score == 8.0
 
     @pytest.mark.asyncio
     async def test_fallback_text_as_array(self) -> None:
@@ -85,9 +92,9 @@ class TestScoreBatch:
         )
         client = _mock_client(parsed=None, text=text)
 
-        results = await score_batch(client, "system", "batch", [1])
-        assert len(results) == 1
-        assert results[0].relevance_score == 5.0
+        batch_result = await score_batch(client, "system", "batch", [1])
+        assert len(batch_result.results) == 1
+        assert batch_result.results[0].relevance_score == 5.0
 
     @pytest.mark.asyncio
     async def test_score_clamping(self) -> None:
@@ -109,9 +116,9 @@ class TestScoreBatch:
         )
         client = _mock_client(parsed=batch_resp)
 
-        results = await score_batch(client, "system", "batch", [1, 2])
-        assert results[0].relevance_score == 10.0
-        assert results[1].relevance_score == 0.0
+        batch_result = await score_batch(client, "system", "batch", [1, 2])
+        assert batch_result.results[0].relevance_score == 10.0
+        assert batch_result.results[1].relevance_score == 0.0
 
     @pytest.mark.asyncio
     async def test_tag_normalization(self) -> None:
@@ -127,8 +134,8 @@ class TestScoreBatch:
         )
         client = _mock_client(parsed=batch_resp)
 
-        results = await score_batch(client, "system", "batch", [1])
-        assert results[0].tags == ["python", "rust", "machine learning"]
+        batch_result = await score_batch(client, "system", "batch", [1])
+        assert batch_result.results[0].tags == ["python", "rust", "machine learning"]
 
     @pytest.mark.asyncio
     async def test_result_count_mismatch_raises(self) -> None:

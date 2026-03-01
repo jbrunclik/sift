@@ -1,4 +1,6 @@
+import html
 import logging
+import re
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, cast
@@ -39,13 +41,28 @@ def _parse_date(entry: dict[str, Any]) -> datetime | None:
     return None
 
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_MULTI_SPACE_RE = re.compile(r"\s+")
+
+
+def _strip_html(text: str) -> str:
+    """Strip HTML tags and decode entities from text."""
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = html.unescape(text)
+    text = _MULTI_SPACE_RE.sub(" ", text)
+    return text.strip()
+
+
 def _extract_content(entry: dict[str, Any]) -> str | None:
-    """Extract content/summary text from a feed entry."""
+    """Extract content/summary text from a feed entry, stripping HTML."""
+    raw: str | None = None
     # Try content first, then summary
     if (content_list := entry.get("content")) and isinstance(content_list, list):
-        return str(content_list[0].get("value", ""))
-    if summary := entry.get("summary"):
-        return str(summary)
+        raw = str(content_list[0].get("value", ""))
+    elif summary := entry.get("summary"):
+        raw = str(summary)
+    if raw:
+        return _strip_html(raw)
     return None
 
 

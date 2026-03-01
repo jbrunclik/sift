@@ -1,71 +1,138 @@
 # Sift
 
-Personal news filter. Fetches articles from RSS feeds, scores relevance with Gemini Flash, and shows you only what matters. The default feed is a short curated list — not a firehose. A feedback loop (thumbs up/down + "Missed" corrections) teaches Sift your interests over time.
+**Personal news aggregator with AI-powered relevance scoring.**
 
-## Setup
+Sift fetches articles from your RSS feeds, scores each one for relevance using Gemini Flash, and surfaces only what matters. Your curated inbox shows high-relevance articles — not a firehose. A feedback loop learns your preferences over time through thumbs up/down voting and "Missed" corrections.
 
-```bash
-# Install dependencies
-make install
-
-# Copy and fill in environment variables
-cp .env.example .env
-
-# Run database migrations
-make migrate
-
-# Start dev server (backend + frontend)
-make dev
-```
+---
 
 ## How It Works
 
+```
+RSS Feeds → Fetch → Gemini Scoring → Curated Inbox (score ≥ 7.0)
+                                            ↑
+                                      Feedback Loop
+                                   (tag weights + profile)
+```
+
 1. **Add RSS feeds** — enter a name and feed URL in the Sources page
-2. **Sift fetches** — articles are pulled every 30 minutes (or manually via "Fetch now")
-3. **Gemini scores** — each article gets a 0-10 relevance score based on your profile
-4. **You see the cream** — only articles scoring >= 7.0 appear in the default feed
-5. **You give feedback** — thumbs up/down refines future scoring
-6. **"Show all" mode** — browse everything and mark articles Sift missed
+2. **Sift fetches automatically** — adaptive intervals (10 min–6 hours) based on feed activity
+3. **Gemini scores every article** — 0–10 relevance score based on your profile, interests, and feedback history
+4. **Your inbox shows only the best** — articles scoring ≥ 7.0 appear by default
+5. **Give feedback** — thumbs up/down teaches Sift what you care about
+6. **Training mode** — browse everything, mark articles Sift missed for rapid calibration
 
-## Sources
+## Features
 
-Currently RSS only. More sources planned.
+- **Curated inbox** — read-and-archive semantics; voted/read articles exit with undo support
+- **AI scoring** — Gemini Flash rates every article with explanation and auto-generated summary
+- **Adaptive fetch** — feed intervals adjust automatically based on new article frequency
+- **Feedback loop** — tag weight learning from votes; weights influence future scoring
+- **Multilingual summaries** — configurable summary language (English, Czech, etc.)
+- **Keyboard shortcuts** — vim-style navigation (j/k/u/d/e/o/?/t)
+- **Source categories** — free-text categorization with autocomplete
+- **LLM cost tracking** — per-model token usage and cost breakdown
+- **Dark mode** — follows system preference
+- **Pipeline visibility** — background job triggers, source health, error tracking from the UI
 
-| Source | Type | Status |
-|--------|------|--------|
-| RSS feeds (Feedly, iDNES, etc.) | RSS/Atom | Implemented |
-| Hacker News | Firebase API | Planned |
-| YouTube channels | RSS | Planned |
-| Reddit | httpx | Planned |
-| HN.cz | RSS/scrape | Planned |
-| mczlicin.cz/dp | Scrape | Planned |
+## Quick Start
+
+```bash
+# Install dependencies (requires uv + node)
+make install
+
+# Copy and configure environment variables
+cp .env.example .env
+# Edit .env — at minimum set GEMINI_API_KEY
+
+# Apply database migrations
+make migrate
+
+# Start development server (backend:8000 + frontend:5173)
+make dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) and add your first RSS feed.
+
+## Configuration
+
+Key environment variables (see `.env.example` for all options):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_API_KEY` | — | Google AI API key (required for scoring) |
+| `DATABASE_PATH` | `data/news.db` | SQLite database location |
+| `PORT` | `8000` | Backend server port |
+| `SCORING_INTERVAL_MINUTES` | `5` | How often to score new articles |
+| `ARTICLE_RETENTION_DAYS` | `90` | Days to keep articles before cleanup |
+
+## Architecture
+
+```
+backend/               Python 3.14 + FastAPI
+  api/                 REST endpoints (articles, sources, feedback, preferences, stats)
+  scoring/             Gemini pipeline (batched scoring, cost tracking, deduplication)
+  preferences/         Feedback processor, tag weight learning
+  scheduler/           APScheduler jobs (fetch, score, cleanup)
+  sources/             Source plugins (RSS, extensible)
+  migrations/          Numbered SQL migrations
+
+frontend/              Vite + vanilla TypeScript SPA
+  src/pages/           Feed, sources, stats, preferences
+  src/components/      Article cards, nav, search, toast
+  src/styles/          CSS design system (light + dark)
+
+tests/                 pytest (unit, integration, visual)
+docs/                  Product spec, ADRs, pipeline docs
+```
 
 ## Development
 
 ```bash
-make dev        # Run backend + frontend (concurrently)
-make test       # Run all tests
-make lint       # ruff check + format check
-make typecheck  # mypy --strict
-make format     # Auto-fix lint + formatting
-make migrate    # Apply database migrations
-make serve      # Production server (PORT env var)
+make dev              # Backend + frontend concurrently
+make test             # All tests (all passing)
+make test-unit        # Unit tests only
+make lint             # ruff check + format check
+make typecheck        # mypy --strict
+make format           # Auto-fix lint + formatting
+make migrate          # Apply database migrations
 ```
 
-## Claude Code Skills
+## Pipeline
 
-| Skill | Description |
-|-------|-------------|
-| `/feature <desc>` | Plan and implement a new feature |
-| `/bug <desc>` | Investigate and fix a bug |
-| `/commit` | Run checks and commit with Conventional Commits |
-| `/improve` | Analyze session, learn from corrections, update docs |
+See [docs/pipeline.md](docs/pipeline.md) for detailed data flow documentation.
+
+**Schedule summary:**
+
+| Job | Interval | Notes |
+|-----|----------|-------|
+| Fetch sources | 30 min (global) | Per-source adaptive intervals |
+| Score articles | 5 min | Configurable via env |
+| Cleanup | 24 hours | Respects feedback, configurable retention |
+
+All jobs can be triggered manually from the Stats page.
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Navigate down / up |
+| `o` / `Enter` | Open article in new tab |
+| `u` | Upvote (more like this) |
+| `d` | Downvote (less like this) |
+| `e` / `m` | Mark as read |
+| `t` | Toggle training mode |
+| `?` | Show help overlay |
 
 ## Tech Stack
 
 - **Backend**: Python 3.14, FastAPI, SQLite (WAL + FTS5), APScheduler
-- **Frontend**: Vite + vanilla TypeScript
-- **Scoring**: Gemini Flash via `google-genai`
+- **Frontend**: Vite + vanilla TypeScript (no framework)
+- **Scoring**: Gemini 3.0 Flash via `google-genai`, structured JSON output
 - **Package management**: `uv` (Python), `npm` (frontend)
-- **Linting**: `ruff` (lint + format), `mypy` (strict)
-- **Testing**: `pytest` + `pytest-asyncio` + `respx`
+- **Linting**: `ruff` (lint + format), `mypy --strict`
+- **Testing**: `pytest` + `pytest-asyncio` + `respx` (pytest)
+
+## License
+
+Private project.

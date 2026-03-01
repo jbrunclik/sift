@@ -14,6 +14,9 @@ class Source(BaseModel):
     last_fetched_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    category: str = ""
+    avg_articles_per_fetch: float = 0.0
+    consecutive_empty_fetches: int = 0
 
 
 class SourceCreate(BaseModel):
@@ -23,6 +26,7 @@ class SourceCreate(BaseModel):
     config_json: str = "{}"
     enabled: bool = True
     fetch_interval_minutes: int = 30
+    category: str = ""
 
 
 class Article(BaseModel):
@@ -125,6 +129,26 @@ class HealthResponse(BaseModel):
     unscored_count: int = 0
 
 
+class ScoringLog(BaseModel):
+    id: int
+    batch_size: int
+    tokens_in: int
+    tokens_out: int
+    model: str
+    cost_usd: float
+    scored_at: datetime
+
+
+class SchedulerRun(BaseModel):
+    id: int
+    job_name: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    status: str = "running"
+    details: str = ""
+    error_message: str | None = None
+
+
 class StatsResponse(BaseModel):
     total_articles: int = 0
     scored_articles: int = 0
@@ -133,3 +157,5 @@ class StatsResponse(BaseModel):
     positive_feedback: int = 0
     negative_feedback: int = 0
     sources: list[dict[str, object]] = Field(default_factory=list)
+    score_distribution: list[int] = Field(default_factory=list)
+    inbox_count: int = 0

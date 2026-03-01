@@ -15,11 +15,13 @@ class PreferencesResponse(BaseModel):
     interests: list[str]
     tag_weights: dict[str, float]
     profile_version: int
+    summary_language: str = "en"
 
 
 class PreferencesUpdate(BaseModel):
     prose_profile: str | None = None
     interests: list[str] | None = None
+    summary_language: str | None = None
 
 
 class TagWeightEntry(BaseModel):
@@ -33,8 +35,9 @@ async def get_preferences() -> PreferencesResponse:
     try:
         rows = list(
             await db.execute_fetchall(
-                "SELECT prose_profile, interests_json, tag_weights_json, profile_version "
-                "FROM user_profile WHERE id = 1"
+                "SELECT prose_profile, interests_json, tag_weights_json, profile_version,"
+                " summary_language"
+                " FROM user_profile WHERE id = 1"
             )
         )
         if not rows:
@@ -47,6 +50,7 @@ async def get_preferences() -> PreferencesResponse:
             interests=json.loads(str(row[1])),
             tag_weights=json.loads(str(row[2])),
             profile_version=int(row[3]),
+            summary_language=str(row[4] or "en"),
         )
     finally:
         await db.close()
@@ -59,8 +63,9 @@ async def update_preferences(update: PreferencesUpdate) -> PreferencesResponse:
         # Fetch current
         rows = list(
             await db.execute_fetchall(
-                "SELECT prose_profile, interests_json, tag_weights_json, profile_version "
-                "FROM user_profile WHERE id = 1"
+                "SELECT prose_profile, interests_json, tag_weights_json, profile_version,"
+                " summary_language"
+                " FROM user_profile WHERE id = 1"
             )
         )
         row = rows[0]
@@ -68,20 +73,23 @@ async def update_preferences(update: PreferencesUpdate) -> PreferencesResponse:
         interests: list[str] = json.loads(str(row[1]))
         tag_weights: dict[str, float] = json.loads(str(row[2]))
         version = int(row[3])
+        summary_language = str(row[4] or "en")
 
         if update.prose_profile is not None:
             prose = update.prose_profile
         if update.interests is not None:
             interests = update.interests
+        if update.summary_language is not None:
+            summary_language = update.summary_language
 
         await db.execute(
             """
             UPDATE user_profile
-            SET prose_profile = ?, interests_json = ?, profile_version = ?,
-                updated_at = datetime('now')
+            SET prose_profile = ?, interests_json = ?, summary_language = ?,
+                profile_version = ?, updated_at = datetime('now')
             WHERE id = 1
             """,
-            (prose, json.dumps(interests), version + 1),
+            (prose, json.dumps(interests), summary_language, version + 1),
         )
         await db.commit()
 
@@ -90,6 +98,7 @@ async def update_preferences(update: PreferencesUpdate) -> PreferencesResponse:
             interests=interests,
             tag_weights=tag_weights,
             profile_version=version + 1,
+            summary_language=summary_language,
         )
     finally:
         await db.close()

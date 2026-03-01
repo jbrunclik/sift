@@ -44,6 +44,34 @@ class TestBuildSystemPrompt:
         assert "tag24" in result
         assert "tag0" not in result
 
+    def test_language_instruction_added_for_non_english(self) -> None:
+        result = build_system_prompt("I like tech", "{}", "[]", summary_language="cs")
+        assert "Write all summaries in Czech" in result
+
+    def test_no_language_instruction_for_english(self) -> None:
+        result = build_system_prompt("I like tech", "{}", "[]", summary_language="en")
+        assert "Write all summaries" not in result
+
+    def test_language_instruction_cold_start(self) -> None:
+        result = build_system_prompt("", "{}", "[]", summary_language="cs")
+        assert "Write all summaries in Czech" in result
+        assert COLD_START_SYSTEM_PROMPT in result
+
+    def test_existing_tags_in_prompt(self) -> None:
+        result = build_system_prompt(
+            "I like tech", "{}", "[]", existing_tags=["python", "rust", "ai"]
+        )
+        assert "python, rust, ai" in result
+        assert "prefer reusing these existing tags" in result
+
+    def test_existing_tags_in_cold_start(self) -> None:
+        result = build_system_prompt("", "{}", "[]", existing_tags=["python", "rust"])
+        assert "python, rust" in result
+
+    def test_no_tag_instruction_when_empty_tags(self) -> None:
+        result = build_system_prompt("I like tech", "{}", "[]", existing_tags=[])
+        assert "prefer reusing" not in result
+
 
 class TestBuildBatchPrompt:
     def _make_article(self, **overrides: object) -> ArticlePromptData:

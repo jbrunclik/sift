@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from apscheduler import AsyncScheduler
         from apscheduler.triggers.interval import IntervalTrigger
 
+        from backend.scheduler.cleanup import run_cleanup
         from backend.scheduler.worker import fetch_all_sources, score_unscored_articles
 
         scheduler = AsyncScheduler()
@@ -47,9 +48,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             IntervalTrigger(minutes=settings.scoring_interval_minutes),
             id="score_unscored",
         )
+        await scheduler.add_schedule(
+            run_cleanup,
+            IntervalTrigger(hours=24),
+            id="cleanup",
+        )
         await scheduler.start_in_background()
         logger.info(
-            "Scheduler started (fetch every 30 min, score every %d min)",
+            "Scheduler started (fetch every 30 min, score every %d min, cleanup daily)",
             settings.scoring_interval_minutes,
         )
     except Exception:

@@ -1,64 +1,26 @@
-# Sift — Agent Context
+# Agent Conventions
 
-## What This Is
-Sift is a personal news aggregator that fetches articles from 8+ sources, scores relevance with Gemini Flash, and surfaces a curated feed. Feedback loop learns preferences over time.
+Rules for AI agents (Claude Code, Copilot, etc.) contributing to this codebase.
 
-## Architecture
-- **Backend**: Python 3.14, FastAPI, SQLite (WAL + FTS5), APScheduler
-- **Frontend**: Vite + vanilla TypeScript, hash-based SPA router
-- **Scoring**: Gemini 3.0 Flash via `google-genai`, structured JSON output
-- **MCP**: FastMCP server sharing SQLite DB with backend
+## Documentation-alongside-code rule
 
-## Key Commands
-```bash
-make install        # uv sync + npm install
-make dev            # Backend dev server (port 8000, auto-reload)
-make frontend-dev   # Frontend dev server (port 5173, proxies /api → 8000)
-make test           # Run all tests
-make test-unit      # Unit tests only
-make lint           # ruff check + format check
-make typecheck      # mypy --strict
-make format         # Auto-fix lint + format
-make migrate        # Run database migrations
-```
+Every code change must include relevant documentation updates in the same PR. Specifically:
 
-## Conventions
-- **Imports**: Use absolute imports from `backend.` (e.g., `from backend.models import Article`)
-- **Async**: All I/O is async. Use `async def` for handlers, sources, DB operations
-- **Types**: Strict mypy. All function signatures typed. Use Pydantic models for data
-- **SQL**: Raw SQL via aiosqlite (no ORM). Parameterized queries only (`?` placeholders)
-- **Tests**: pytest + pytest-asyncio. Unit tests mock external I/O. Integration tests use in-memory SQLite
-- **Config**: All secrets/config via environment variables, loaded through `backend.config.Settings`
-- **Error handling**: Let exceptions propagate. FastAPI exception handlers catch at boundary
-- **Line length**: 100 chars (ruff)
-- **Formatting**: ruff format (Black-compatible)
+1. **ADRs**: If the change introduces a new architectural decision or reverses an existing one, create or update an ADR in `docs/adr/` and add it to `docs/adr/README.md`.
+2. **Roadmap**: If the change completes a roadmap item, check it off in `docs/roadmap.md`. If it adds new planned work, add the item.
+3. **CLAUDE.md**: If the change alters conventions, commands, project layout, or the source plugin pattern, update `CLAUDE.md` to match.
+4. **MEMORY.md**: Update status lines in `.claude/projects/*/memory/MEMORY.md` when phases are completed or project state changes materially.
 
-## Source Plugin Pattern
-Add a new source by:
-1. Create `backend/sources/my_source.py`
-2. Subclass `BaseSource`, implement `async def fetch() -> list[RawArticle]`
-3. Decorate class with `@register_source`
-4. Add import in `backend/sources/__init__.py`
+## Why
 
-## Database
-- SQLite at `data/news.db` (WAL mode for concurrent reads)
-- Migrations in `backend/migrations/` (numbered SQL files, run in order)
-- FTS5 index on articles for full-text search
+Documentation drift is the #1 cause of agent confusion on subsequent sessions. Keeping docs in sync with code means the next agent (or human) starts with accurate context instead of stale assumptions.
 
-## Project Layout
-```
-backend/           # Python backend
-  main.py          # FastAPI app factory + lifespan
-  config.py        # Pydantic Settings
-  database.py      # SQLite connection + migrations
-  models.py        # Pydantic models
-  sources/         # Source plugins (RSS, HN, Reddit, YouTube, etc.)
-  scoring/         # Gemini scoring pipeline
-  preferences/     # User profile + feedback processing
-  scheduler/       # APScheduler fetch/score jobs
-  api/             # FastAPI route modules
-  mcp/             # FastMCP server
-frontend/          # Vite + vanilla TypeScript SPA
-tests/             # pytest (unit/, integration/, e2e/, visual/)
-deploy/            # systemd, Caddy, backup scripts
-```
+## Checklist for PRs
+
+Before marking a PR ready for review, verify:
+
+- [ ] `docs/roadmap.md` reflects any completed or newly planned items
+- [ ] New architectural decisions have an ADR
+- [ ] `docs/adr/README.md` index is up to date
+- [ ] `CLAUDE.md` matches current conventions and commands
+- [ ] No dead documentation referencing removed features
