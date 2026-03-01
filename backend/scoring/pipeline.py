@@ -16,6 +16,7 @@ from backend.scoring.pricing import calculate_cost
 from backend.scoring.prompts import ArticlePromptData, build_batch_prompt, build_system_prompt
 from backend.scoring.scorer import (
     BATCH_SIZE,
+    BatchTooLargeError,
     ScoringError,
     ScoringResult,
     create_gemini_client,
@@ -182,6 +183,21 @@ async def _process_batch(
 
     try:
         batch_result = await score_batch(client, system_prompt, batch_prompt, article_ids)  # type: ignore[arg-type]
+    except BatchTooLargeError as e:
+        if len(batch) == 1:
+            # Already a single article — cannot split further
+            logger.error("Single article too large for scoring: %s", e.reason)
+            await _mark_as_scored_with_no_result(db, all_group_ids, reason=e.reason)
+            return False
+        logger.warning(
+            "Batch of %d hit MAX_TOKENS, retrying articles individually", len(batch)
+        )
+        all_ok = True
+        for group in batch:
+            ok = await _process_batch(client, system_prompt, vocabulary, [group], db)
+            if not ok:
+                all_ok = False
+        return all_ok
     except ScoringError as e:
         logger.error("Batch scoring failed: %s", e.reason)
         await _mark_as_scored_with_no_result(db, all_group_ids, reason=e.reason)

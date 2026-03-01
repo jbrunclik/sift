@@ -5,6 +5,7 @@ import pytest
 
 from backend.scoring.scorer import (
     BatchScoringResponse,
+    BatchTooLargeError,
     ScoringError,
     ScoringResult,
     create_gemini_client,
@@ -152,6 +153,52 @@ class TestScoreBatch:
 
         with pytest.raises(ScoringError, match="Gemini API error"):
             await score_batch(client, "system", "batch", [1])
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_raises_batch_too_large(self) -> None:
+        """MAX_TOKENS finish reason should raise BatchTooLargeError (subclass of ScoringError)."""
+        response = MagicMock()
+        response.parsed = None
+        response.text = ""
+        response.usage_metadata = MagicMock()
+        response.usage_metadata.prompt_token_count = 100
+        response.usage_metadata.candidates_token_count = 200
+        candidate = MagicMock()
+        candidate.finish_reason = "FinishReason.MAX_TOKENS"
+        response.candidates = [candidate]
+
+        client = MagicMock()
+        client.aio.models.generate_content = AsyncMock(return_value=response)
+
+        with pytest.raises(BatchTooLargeError, match="truncated"):
+            await score_batch(client, "system", "batch", [1, 2])
+
+    @pytest.mark.asyncio
+    async def test_other_finish_reason_raises_scoring_error(self) -> None:
+        """Non-STOP, non-MAX_TOKENS finish reasons raise plain ScoringError."""
+        response = MagicMock()
+        response.parsed = None
+        response.text = ""
+        response.usage_metadata = MagicMock()
+        response.usage_metadata.prompt_token_count = 100
+        response.usage_metadata.candidates_token_count = 200
+        candidate = MagicMock()
+        candidate.finish_reason = "SAFETY"
+        response.candidates = [candidate]
+
+        client = MagicMock()
+        client.aio.models.generate_content = AsyncMock(return_value=response)
+
+        with pytest.raises(ScoringError, match="truncated"):
+            await score_batch(client, "system", "batch", [1])
+
+        # Ensure it's NOT a BatchTooLargeError
+        try:
+            await score_batch(client, "system", "batch", [1])
+        except BatchTooLargeError:
+            pytest.fail("SAFETY should not raise BatchTooLargeError")
+        except ScoringError:
+            pass
 
     @pytest.mark.asyncio
     async def test_empty_response_raises(self) -> None:

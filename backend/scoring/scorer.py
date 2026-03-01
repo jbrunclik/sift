@@ -39,6 +39,12 @@ class ScoringError(Exception):
         super().__init__(reason)
 
 
+class BatchTooLargeError(ScoringError):
+    """Raised when Gemini response is truncated (MAX_TOKENS), signaling the batch should be split."""
+
+    pass
+
+
 def create_gemini_client() -> genai.Client:
     """Create a Gemini API client. Raises ValueError if API key is missing."""
     if not settings.gemini_api_key:
@@ -62,7 +68,7 @@ async def score_batch(
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     temperature=0.2,
-                    max_output_tokens=1024,
+                    max_output_tokens=4096,
                     response_mime_type="application/json",
                     response_schema=BatchScoringResponse,
                 ),
@@ -102,6 +108,12 @@ async def score_batch(
     if response.candidates:
         finish_reason = response.candidates[0].finish_reason
     if finish_reason and str(finish_reason) not in ("STOP", "FinishReason.STOP"):
+        finish_str = str(finish_reason)
+        if "MAX_TOKENS" in finish_str:
+            raise BatchTooLargeError(
+                f"Gemini response truncated (finish_reason={finish_reason})",
+                batch_ids=article_ids,
+            )
         raise ScoringError(
             f"Gemini response truncated (finish_reason={finish_reason})",
             batch_ids=article_ids,

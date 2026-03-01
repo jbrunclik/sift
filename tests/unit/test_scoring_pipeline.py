@@ -4,7 +4,12 @@ import aiosqlite
 import pytest
 
 from backend.scoring.pipeline import run_scoring_pipeline
-from backend.scoring.scorer import ScoringBatchResult, ScoringError, ScoringResult
+from backend.scoring.scorer import (
+    BatchTooLargeError,
+    ScoringBatchResult,
+    ScoringError,
+    ScoringResult,
+)
 
 # Distinct titles that won't fuzzy-match each other (< 0.80 similarity)
 DISTINCT_TITLES = [
@@ -268,3 +273,89 @@ class TestRunScoringPipeline:
             "SELECT COUNT(*) as cnt FROM articles WHERE relevance_score IS NOT NULL"
         )
         assert int(rows[0]["cnt"]) == 12
+
+    @pytest.mark.asyncio
+    async def test_batch_too_large_retries_individually(
+        self, db: aiosqlite.Connection
+    ) -> None:
+        """When a batch hits MAX_TOKENS, the pipeline retries each article individually."""
+        source_id = await _insert_source(db)
+        await _insert_article(
+            db, source_id, url="https://a.com/1", title="Python Releases Major Update"
+        )
+        await _insert_article(
+            db,
+            source_id,
+            url="https://b.com/2",
+            title="Kubernetes Scaling Best Practices",
+        )
+
+        call_count = 0
+
+        async def mock_score(
+            client: object,
+            system_prompt: str,
+            batch_prompt: str,
+            article_ids: list[int],
+        ) -> ScoringBatchResult:
+            nonlocal call_count
+            call_count += 1
+            if len(article_ids) > 1:
+                raise BatchTooLargeError(
+                    "Gemini response truncated (finish_reason=MAX_TOKENS)",
+                    batch_ids=article_ids,
+                )
+            return ScoringBatchResult(
+                results=[_make_result(7.0)],
+                tokens_in=50,
+                tokens_out=100,
+            )
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch("backend.scoring.pipeline.score_batch", side_effect=mock_score),
+        ):
+            mock_client.return_value = MagicMock()
+            stats = await run_scoring_pipeline()
+
+        # 1 batch call (fails) + 2 individual retries = 3 calls
+        assert call_count == 3
+        # Both articles should be scored successfully
+        rows = await db.execute_fetchall(
+            "SELECT relevance_score FROM articles ORDER BY id"
+        )
+        assert len(rows) == 2
+        assert float(rows[0]["relevance_score"]) == 7.0
+        assert float(rows[1]["relevance_score"]) == 7.0
+
+    @pytest.mark.asyncio
+    async def test_batch_too_large_single_article_fails(
+        self, db: aiosqlite.Connection
+    ) -> None:
+        """A single article hitting MAX_TOKENS is marked as failed (cannot split further)."""
+        source_id = await _insert_source(db)
+        art_id = await _insert_article(db, source_id)
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch(
+                "backend.scoring.pipeline.score_batch",
+                new_callable=AsyncMock,
+                side_effect=BatchTooLargeError(
+                    "Gemini response truncated", batch_ids=[art_id]
+                ),
+            ),
+        ):
+            mock_client.return_value = MagicMock()
+            await run_scoring_pipeline()
+
+        rows = await db.execute_fetchall(
+            "SELECT relevance_score FROM articles WHERE id = ?", (art_id,)
+        )
+        assert float(rows[0]["relevance_score"]) == -1.0
