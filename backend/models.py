@@ -15,6 +15,7 @@ class Source(BaseModel):
     created_at: datetime
     updated_at: datetime
     category: str = ""
+    starred: bool = False
     avg_articles_per_fetch: float = 0.0
     consecutive_empty_fetches: int = 0
 
@@ -27,6 +28,7 @@ class SourceCreate(BaseModel):
     enabled: bool = True
     fetch_interval_minutes: int = 30
     category: str = ""
+    starred: bool = False
 
 
 class Article(BaseModel):

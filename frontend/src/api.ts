@@ -85,7 +85,7 @@ export function createSource(source: {
 
 export function updateSource(
   id: number,
-  data: { category?: string; name?: string; enabled?: boolean; fetch_interval_minutes?: number; config_json?: string }
+  data: { category?: string; name?: string; enabled?: boolean; fetch_interval_minutes?: number; config_json?: string; starred?: boolean }
 ): Promise<Source> {
   return request<Source>(`/sources/${id}`, {
     method: "PATCH",

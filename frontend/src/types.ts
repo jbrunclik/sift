@@ -37,6 +37,7 @@ export interface Source {
   created_at: string;
   updated_at: string;
   category: string;
+  starred: boolean;
 }
 
 export interface Feedback {

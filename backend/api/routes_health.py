@@ -132,13 +132,15 @@ async def stats() -> StatsExtended:
             if 0 <= bucket <= 10:
                 distribution[bucket] = int(row[1])
 
-        # Inbox count (unread, score >= 7)
+        # Inbox count (unread, score >= 7 OR starred source)
         inbox = list(
             await db.execute_fetchall(
                 """
-                SELECT COUNT(*) FROM articles
-                WHERE is_read = 0 AND is_hidden = 0
-                  AND relevance_score IS NOT NULL AND relevance_score >= 7.0
+                SELECT COUNT(*) FROM articles a
+                JOIN sources s ON a.source_id = s.id
+                WHERE a.is_read = 0 AND a.is_hidden = 0
+                  AND a.relevance_score IS NOT NULL
+                  AND (a.relevance_score >= 7.0 OR s.starred = 1)
                 """
             )
         )

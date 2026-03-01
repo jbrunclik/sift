@@ -634,6 +634,17 @@
   cursor: not-allowed;
 }
 
+.btn-icon-action.btn-icon-star.starred {
+  color: #d4a017;
+  border-color: color-mix(in srgb, #d4a017 40%, transparent);
+  background: color-mix(in srgb, #d4a017 8%, transparent);
+}
+
+.btn-icon-action.btn-icon-star:hover {
+  color: #e0ad1f;
+  border-color: color-mix(in srgb, #d4a017 50%, transparent);
+}
+
 .btn-icon-action.spinning svg {
   animation: spin 1s linear infinite;
 }

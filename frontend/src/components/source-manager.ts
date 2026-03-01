@@ -24,6 +24,8 @@ const ICON = {
   edit: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
   chevron: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`,
   brain: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v1a3 3 0 0 0-3 3 3 3 0 0 0 1 2.2A4 4 0 0 0 4 16a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4 4 4 0 0 0-2-3.8A3 3 0 0 0 19 10a3 3 0 0 0-3-3V6a4 4 0 0 0-4-4Z"/><path d="M12 2v20"/></svg>`,
+  starOutline: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  starFilled: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
 };
 
 function getFaviconUrl(source: Source): string | null {
@@ -379,6 +381,22 @@ export function SourceManager(): HTMLElement {
 
     // Right: actions
     const actions = el("div", { class: "source-actions" });
+
+    const starBtn = el("button", {
+      class: `btn-icon-action btn-icon-star${source.starred ? " starred" : ""}`,
+      title: source.starred ? "Unstar source (stop showing all articles)" : "Star source (show all articles in inbox)",
+    });
+    starBtn.innerHTML = source.starred ? ICON.starFilled : ICON.starOutline;
+    starBtn.addEventListener("click", async () => {
+      try {
+        await updateSource(source.id, { starred: !source.starred });
+        showToast(source.starred ? `Unstarred ${source.name}` : `Starred ${source.name}`, "success");
+        load();
+      } catch (err) {
+        showToast(`Error: ${err}`, "error");
+      }
+    });
+    actions.appendChild(starBtn);
 
     const fetchBtn = el("button", {
       class: "btn-icon-action",

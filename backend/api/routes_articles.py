@@ -104,7 +104,7 @@ async def list_articles(
             conditions.append("a.relevance_score >= ?")
             args.append(params.min_score)
         elif not params.show_all:
-            conditions.append("a.relevance_score >= ?")
+            conditions.append("(a.relevance_score >= ? OR s.starred = 1)")
             args.append(CURATED_MIN_SCORE)
 
         # In training mode, exclude articles without tags — training is useless without them

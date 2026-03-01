@@ -74,6 +74,7 @@ class SourceUpdate(BaseModel):
     enabled: bool | None = None
     fetch_interval_minutes: int | None = None
     config_json: str | None = None
+    starred: bool | None = None
 
 
 @router.patch("/{source_id}")
@@ -106,6 +107,9 @@ async def update_source(source_id: int, data: SourceUpdate) -> Source:
                 raise HTTPException(status_code=400, detail=f"Invalid config_json: {e}") from e
             updates.append("config_json = ?")
             params.append(data.config_json)
+        if data.starred is not None:
+            updates.append("starred = ?")
+            params.append(int(data.starred))
 
         if updates:
             params.append(source_id)
