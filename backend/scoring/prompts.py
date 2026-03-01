@@ -27,7 +27,7 @@ For each article, provide:
 - relevance_score: float 0-10 (10 = extremely relevant/high-quality)
 - summary: 2-3 sentence summary capturing the key points of the article
 - explanation: brief reason for the score
-- tags: 2-5 lowercase topic tags
+- tags: 2-5 lowercase English topic tags (always English, regardless of article or summary language)
 
 Return a JSON array with one result per article, in the same order as presented."""
 
@@ -42,12 +42,27 @@ LANGUAGE_NAMES: dict[str, str] = {
 }
 
 
+def _build_vocabulary_instruction(approved_tags: list[str]) -> str:
+    """Build the tag vocabulary constraint section for the prompt."""
+    if not approved_tags:
+        return ""
+    tag_list = ", ".join(approved_tags)
+    return (
+        f"## Tag Vocabulary\n"
+        f"Assign tags ONLY from this list: {tag_list}\n\n"
+        f"If an article covers a topic not in this vocabulary, you may suggest ONE new tag "
+        f'by prefixing it with "+": e.g. "+quantum-computing". '
+        f"New tags must be in English and be durable topics "
+        f"(not event names, years, or ephemeral terms)."
+    )
+
+
 def build_system_prompt(
     prose_profile: str,
     tag_weights_json: str,
     interests_json: str,
     summary_language: str = "en",
-    existing_tags: list[str] | None = None,
+    approved_tags: list[str] | None = None,
 ) -> str:
     """Build the system prompt incorporating the user profile.
 
@@ -64,29 +79,30 @@ def build_system_prompt(
     language_instruction = (
         f"Write all summaries in {language_name}." if summary_language != "en" else ""
     )
-    tag_reuse_instruction = ""
-    if existing_tags:
-        tag_reuse_instruction = (
-            "When assigning tags, prefer reusing these existing tags where applicable: "
-            f"{', '.join(existing_tags)}. Only create new tags when no existing tag fits."
-        )
+    vocabulary_instruction = _build_vocabulary_instruction(approved_tags or [])
 
     if not prose_profile and not tag_weights and not interests:
         prompt = COLD_START_SYSTEM_PROMPT
         extra: list[str] = []
         if language_instruction:
             extra.append(language_instruction)
-        if tag_reuse_instruction:
-            extra.append(tag_reuse_instruction)
+        if vocabulary_instruction:
+            extra.append(vocabulary_instruction)
         if extra:
-            prompt += "\n\n" + " ".join(extra)
+            prompt += "\n\n" + "\n\n".join(extra)
         return prompt
 
     parts = [
         "You are a relevance scoring assistant for a personal news aggregator called Sift.",
         "",
-        "## User Profile",
     ]
+
+    # Tag vocabulary comes first (based on content, before scoring preferences)
+    if vocabulary_instruction:
+        parts.append(vocabulary_instruction)
+        parts.append("")
+
+    parts.append("## User Profile")
 
     if prose_profile:
         parts.append(prose_profile)
@@ -106,21 +122,18 @@ def build_system_prompt(
     instructions = """\
 ## Instructions
 
-Score each article based on how relevant it is to this user's interests and \
-preferences. Consider both the topic match and content quality.
+For each article:
+1. Identify 2-5 topic tags based on article content (use vocabulary above)
+2. Score relevance (0-10) considering user preferences above
 
 For each article, provide:
 - relevance_score: float 0-10 (10 = extremely relevant)
 - summary: 2-3 sentence summary capturing the key points of the article
 - explanation: brief reason for the score referencing the user's profile
-- tags: 2-5 lowercase topic tags"""
-    extra_instructions: list[str] = []
+- tags: 2-5 lowercase English topic tags \
+(always English, regardless of article or summary language)"""
     if language_instruction:
-        extra_instructions.append(language_instruction)
-    if tag_reuse_instruction:
-        extra_instructions.append(tag_reuse_instruction)
-    if extra_instructions:
-        instructions += "\n" + " ".join(extra_instructions)
+        instructions += "\n" + language_instruction
     instructions += (
         "\n\nReturn a JSON array with one result per article, in the same order as presented."
     )

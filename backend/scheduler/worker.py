@@ -157,7 +157,17 @@ async def fetch_all_sources() -> None:
         run_id = cursor.lastrowid
         await db.commit()
 
-        rows = await db.execute_fetchall("SELECT id FROM sources WHERE enabled = 1")
+        rows = await db.execute_fetchall(
+            """
+            SELECT id FROM sources
+            WHERE enabled = 1
+              AND (
+                last_fetched_at IS NULL
+                OR datetime(last_fetched_at, '+' || fetch_interval_minutes || ' minutes')
+                   <= datetime('now')
+              )
+            """
+        )
         source_ids = [int(row[0]) for row in rows]
     finally:
         await db.close()

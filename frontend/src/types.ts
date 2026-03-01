@@ -116,3 +116,15 @@ export interface FetchLog {
   error_message: string | null;
   duration_ms: number | null;
 }
+
+export interface VocabularyTag {
+  id: number;
+  name: string;
+  article_count: number;
+}
+
+export interface CandidateTag {
+  id: number;
+  name: string;
+  occurrences: number;
+}

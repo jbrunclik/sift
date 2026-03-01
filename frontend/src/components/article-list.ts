@@ -38,13 +38,13 @@ export function ArticleList(params?: ArticleListOptions): HTMLElement {
       articles = [...articles, ...newArticles];
       offset += newArticles.length;
       if (newArticles.length < limit) hasMore = false;
-
-      render();
     } catch (err) {
       console.error("Failed to load articles:", err);
     } finally {
       loading = false;
     }
+
+    render();
   }
 
   function removeArticle(card: HTMLElement, article: Article): void {
@@ -80,12 +80,21 @@ export function ArticleList(params?: ArticleListOptions): HTMLElement {
 
     if (articles.length === 0 && !loading) {
       const empty = el("div", { class: "empty-state" });
-      empty.appendChild(el("div", { class: "empty-icon" }, "\uD83D\uDCED"));
+      const illustration = el("div", { class: "empty-illustration" });
+      illustration.innerHTML = `<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="50" stroke="var(--color-border)" stroke-width="2" fill="var(--color-surface)" />
+        <path d="M40 65 L55 78 L82 45" stroke="var(--color-primary)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        <circle cx="60" cy="60" r="36" stroke="var(--color-primary)" stroke-width="1.5" opacity="0.2" fill="none" />
+      </svg>`;
+      empty.appendChild(illustration);
+      empty.appendChild(
+        el("div", { class: "empty-title" }, "You\u2019re all caught up!")
+      );
       empty.appendChild(
         el(
           "div",
           { class: "empty-text" },
-          "All caught up! No new articles to show."
+          "No unread articles right now. Check back later or add more sources."
         )
       );
       container.insertBefore(empty, sentinel);

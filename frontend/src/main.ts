@@ -3,6 +3,7 @@ import { FeedPage } from "./pages/feed";
 import { PreferencesPage } from "./pages/preferences";
 import { SourcesPage } from "./pages/sources";
 import { StatsPage } from "./pages/stats";
+import { TagsPage } from "./pages/tags";
 import { initRouter, registerRoute } from "./router";
 
 const app = document.getElementById("app")!;
@@ -19,6 +20,7 @@ app.appendChild(pageContainer);
 registerRoute("feed", FeedPage);
 registerRoute("sources", SourcesPage);
 registerRoute("stats", StatsPage);
+registerRoute("tags", TagsPage);
 registerRoute("preferences", PreferencesPage);
 
 // Start router

@@ -107,6 +107,10 @@ async def list_articles(
             conditions.append("a.relevance_score >= ?")
             args.append(CURATED_MIN_SCORE)
 
+        # In training mode, exclude articles without tags — training is useless without them
+        if params.show_all:
+            conditions.append("a.id IN (SELECT article_id FROM article_tags)")
+
         if params.source_slug:
             conditions.append("s.slug = ?")
             args.append(params.source_slug)

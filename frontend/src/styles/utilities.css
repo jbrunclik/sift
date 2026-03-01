@@ -1,12 +1,12 @@
 /* Buttons */
 .btn {
-  padding: 0.4375rem 0.875rem;
+  padding: 0.4375rem var(--space-6);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border-subtle);
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
-  font-size: 0.8125rem;
+  font-size: var(--font-base);
   font-weight: 500;
   font-family: var(--font-sans);
   transition: all var(--transition-fast);
@@ -46,8 +46,8 @@
 }
 
 .btn-small {
-  padding: 0.3125rem 0.625rem;
-  font-size: 0.75rem;
+  padding: 0.3125rem var(--space-5);
+  font-size: var(--font-sm);
   border-radius: var(--radius-xs);
 }
 
@@ -60,12 +60,12 @@
 
 /* Inputs */
 .input {
-  padding: 0.5rem 0.875rem;
+  padding: var(--space-4) var(--space-6);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 0.875rem;
+  font-size: var(--font-md);
   font-family: var(--font-sans);
   transition: all var(--transition-fast);
   box-shadow: var(--shadow-xs);

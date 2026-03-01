@@ -1,5 +1,6 @@
 import type {
   Article,
+  CandidateTag,
   CostEntry,
   Feedback,
   FetchLog,
@@ -9,6 +10,7 @@ import type {
   StatsResponse,
   TagWeight,
   UserPreferences,
+  VocabularyTag,
 } from "./types";
 
 const BASE = "/api";
@@ -171,4 +173,46 @@ export function getScoringFailures(): Promise<
   { id: number; title: string; url: string; source_name: string; score_attempts: number; scored_at: string | null; error: string | null }[]
 > {
   return request("/stats/scoring-failures");
+}
+
+// Vocabulary
+export function getVocabulary(): Promise<VocabularyTag[]> {
+  return request<VocabularyTag[]>("/preferences/vocabulary");
+}
+
+export function addVocabularyTag(name: string): Promise<VocabularyTag> {
+  return request<VocabularyTag>("/preferences/vocabulary", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function removeVocabularyTag(tagId: number): Promise<void> {
+  return request(`/preferences/vocabulary/${tagId}`, { method: "DELETE" });
+}
+
+export function mergeVocabularyTags(
+  sourceId: number,
+  targetId: number
+): Promise<void> {
+  return request("/preferences/vocabulary/merge", {
+    method: "POST",
+    body: JSON.stringify({ source_id: sourceId, target_id: targetId }),
+  });
+}
+
+export function getVocabularyCandidates(): Promise<CandidateTag[]> {
+  return request<CandidateTag[]>("/preferences/vocabulary/candidates");
+}
+
+export function approveCandidate(tagId: number): Promise<void> {
+  return request(`/preferences/vocabulary/candidates/${tagId}/approve`, {
+    method: "POST",
+  });
+}
+
+export function rejectCandidate(tagId: number): Promise<void> {
+  return request(`/preferences/vocabulary/candidates/${tagId}`, {
+    method: "DELETE",
+  });
 }

@@ -6,6 +6,7 @@ import aiosqlite
 
 from backend.config import settings
 from backend.database import get_db
+from backend.preferences.tag_vocabulary import get_vocabulary, record_candidate, resolve_tag
 from backend.scoring.deduplicator import (
     ArticleForScoring,
     DeduplicatedGroup,
@@ -68,7 +69,7 @@ async def run_scoring_pipeline() -> dict[str, int]:
         logger.info("Deduplicated to %d unique articles", len(groups))
 
         # Fetch user profile for prompt building
-        system_prompt = await _build_system_prompt(db)
+        system_prompt, vocabulary = await _build_system_prompt(db)
 
         # Chunk groups into batches of BATCH_SIZE
         batches: list[list[DeduplicatedGroup]] = []
@@ -81,7 +82,7 @@ async def run_scoring_pipeline() -> dict[str, int]:
 
         async def _score_one_batch(batch: list[DeduplicatedGroup]) -> None:
             async with semaphore:
-                ok = await _process_batch(client, system_prompt, batch, db)
+                ok = await _process_batch(client, system_prompt, vocabulary, batch, db)
                 if ok:
                     stats.scored += len(batch)
                 else:
@@ -128,8 +129,8 @@ async def _fetch_unscored_articles(
     ]
 
 
-async def _build_system_prompt(db: aiosqlite.Connection) -> str:
-    """Build the system prompt from the user profile."""
+async def _build_system_prompt(db: aiosqlite.Connection) -> tuple[str, list[str]]:
+    """Build the system prompt from the user profile. Returns (prompt, vocabulary)."""
     rows = list(
         await db.execute_fetchall(
             "SELECT prose_profile, tag_weights_json, interests_json, summary_language"
@@ -137,34 +138,27 @@ async def _build_system_prompt(db: aiosqlite.Connection) -> str:
         )
     )
 
-    # Query top 50 tags by article count for tag consistency
-    tag_rows = await db.execute_fetchall(
-        """
-        SELECT t.name, COUNT(at.article_id) as cnt
-        FROM tags t
-        JOIN article_tags at ON t.id = at.tag_id
-        GROUP BY t.id
-        ORDER BY cnt DESC
-        LIMIT 50
-        """
-    )
-    existing_tags = [str(r[0]) for r in tag_rows]
+    # Get approved vocabulary for tag constraint
+    vocabulary = await get_vocabulary(db)
 
     if rows:
         row = rows[0]
-        return build_system_prompt(
+        prompt = build_system_prompt(
             prose_profile=str(row[0] or ""),
             tag_weights_json=str(row[1] or "{}"),
             interests_json=str(row[2] or "[]"),
             summary_language=str(row[3] or "en"),
-            existing_tags=existing_tags,
+            approved_tags=vocabulary,
         )
-    return build_system_prompt("", "{}", "[]", existing_tags=existing_tags)
+    else:
+        prompt = build_system_prompt("", "{}", "[]", approved_tags=vocabulary)
+    return prompt, vocabulary
 
 
 async def _process_batch(
     client: object,
     system_prompt: str,
+    vocabulary: list[str],
     batch: list[DeduplicatedGroup],
     db: aiosqlite.Connection,
 ) -> bool:
@@ -212,7 +206,7 @@ async def _process_batch(
     # Store results, mapping each result to all article IDs in the group
     now = datetime.now(UTC).isoformat()
     for group, result in zip(batch, batch_result.results, strict=True):
-        await _store_scoring_result(db, group, result, now)
+        await _store_scoring_result(db, group, result, now, vocabulary)
 
     await db.commit()
     return True
@@ -223,6 +217,7 @@ async def _store_scoring_result(
     group: DeduplicatedGroup,
     result: ScoringResult,
     scored_at: str,
+    vocabulary: list[str],
 ) -> None:
     """Store a scoring result for all articles in a deduplicated group."""
     for article_id in group.all_ids:
@@ -236,12 +231,30 @@ async def _store_scoring_result(
             (result.relevance_score, result.explanation, result.summary, scored_at, article_id),
         )
 
-    # Store tags
-    for tag_name in result.tags:
-        # Insert or ignore tag
-        await db.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+    # Store tags with vocabulary resolution
+    primary_id = group.primary.id
+    for raw_tag in result.tags:
+        # Strip '+' prefix (LLM suggestion for new tag)
+        is_suggestion = raw_tag.startswith("+")
+        tag_name = raw_tag.lstrip("+").lower().strip()
+        if not tag_name:
+            continue
+
+        if is_suggestion:
+            # New tag suggestion — record as candidate
+            await record_candidate(db, tag_name, primary_id)
+            resolved_name = tag_name
+        else:
+            # Resolve against vocabulary
+            resolved_name, is_candidate = resolve_tag(tag_name, vocabulary)
+            if is_candidate and vocabulary:
+                # Not in vocabulary — record as candidate
+                await record_candidate(db, resolved_name, primary_id)
+
+        # Insert or ignore the tag and link to articles
+        await db.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (resolved_name,))
         tag_rows = list(
-            await db.execute_fetchall("SELECT id FROM tags WHERE name = ?", (tag_name,))
+            await db.execute_fetchall("SELECT id FROM tags WHERE name = ?", (resolved_name,))
         )
         if tag_rows:
             tag_id = int(tag_rows[0][0])

@@ -246,7 +246,7 @@ async def test_stats_tag_cloud(page: Page, base_url: str) -> None:
 
 @pytest.mark.asyncio
 async def test_preferences_page_sections(page: Page, base_url: str) -> None:
-    """Preferences page renders all sections: language, profile, interests, tags."""
+    """Preferences page renders sections: language, profile, interests."""
     await page.goto(f"{base_url}/#/preferences")
     sections = page.locator(".prefs-section")
     await sections.first.wait_for(timeout=5000)
@@ -283,19 +283,170 @@ async def test_preferences_save_buttons_have_icons(page: Page, base_url: str) ->
     await page.screenshot(path=str(SCREENSHOT_DIR / "preferences-save-icons.png"), full_page=True)
 
 
+# ── Tags page ─────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
-async def test_preferences_tag_weights(page: Page, base_url: str) -> None:
-    """Tag weights section displays with weight values and reset icons."""
-    await page.goto(f"{base_url}/#/preferences")
+async def test_tags_page_loads(page: Page, base_url: str) -> None:
+    """Tags page renders with vocabulary section and add input."""
+    await page.goto(f"{base_url}/#/tags")
+    await page.wait_for_selector(".prefs-section", timeout=5000)
+    add_row = page.locator(".vocab-add-row")
+    await add_row.wait_for(timeout=5000)
+    add_input = page.locator(".vocab-add-input")
+    assert await add_input.count() == 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-page.png"), full_page=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_tags_add_row_alignment(page: Page, base_url: str) -> None:
+    """Add tag input and button should have matching heights."""
+    await page.goto(f"{base_url}/#/tags")
+    add_row = page.locator(".vocab-add-row")
+    await add_row.wait_for(timeout=5000)
+    input_box = await add_row.locator("input").bounding_box()
+    btn_box = await add_row.locator("button").bounding_box()
+    if input_box and btn_box:
+        # Heights should be within 2px of each other
+        assert abs(input_box["height"] - btn_box["height"]) <= 2, (
+            f"Input height {input_box['height']}px != button height {btn_box['height']}px"
+        )
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-add-alignment.png"),
+        clip=await add_row.bounding_box() or None,  # type: ignore[arg-type]
+    )
+
+
+@pytest.mark.asyncio
+async def test_tags_vocabulary_pills(page: Page, base_url: str) -> None:
+    """Tags page shows approved tags as pill chips with remove buttons."""
+    await page.goto(f"{base_url}/#/tags")
+    pills = page.locator(".vocab-pill")
+    try:
+        await pills.first.wait_for(timeout=3000)
+        count = await pills.count()
+        assert count >= 1
+        remove_btns = page.locator(".vocab-pill-x")
+        assert await remove_btns.count() >= 1
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "tags-vocabulary-pills.png"), full_page=True
+        )
+    except Exception:
+        pytest.skip("No approved tags in vocabulary")
+
+
+@pytest.mark.asyncio
+async def test_tags_merge_section(page: Page, base_url: str) -> None:
+    """Tags page shows merge section with source/target dropdowns."""
+    await page.goto(f"{base_url}/#/tags")
+    merge = page.locator(".vocab-merge-row")
+    try:
+        await merge.wait_for(timeout=3000)
+        selects = merge.locator("select")
+        assert await selects.count() == 2
+        merge_btn = merge.locator("button")
+        assert await merge_btn.count() >= 1
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "tags-merge.png"), full_page=True
+        )
+    except Exception:
+        pytest.skip("No merge UI (need >= 2 approved tags)")
+
+
+@pytest.mark.asyncio
+async def test_tags_candidates_section(page: Page, base_url: str) -> None:
+    """Tags page shows candidates with approve/reject buttons and article count pills."""
+    await page.goto(f"{base_url}/#/tags")
+    candidates = page.locator(".vocab-candidate-row")
+    try:
+        await candidates.first.wait_for(timeout=3000)
+        assert await candidates.count() >= 1
+        approve = page.locator(".btn-approve")
+        reject = page.locator(".btn-reject")
+        assert await approve.count() >= 1
+        assert await reject.count() >= 1
+        # Each candidate should have an article count pill
+        count_pills = page.locator(".vocab-candidate-row .section-count")
+        assert await count_pills.count() >= 1
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "tags-candidates.png"), full_page=True
+        )
+    except Exception:
+        pytest.skip("No candidate tags to display")
+
+
+@pytest.mark.asyncio
+async def test_tags_add_and_remove(page: Page, base_url: str) -> None:
+    """Add a tag to vocabulary and verify it appears, then remove it."""
+    await page.goto(f"{base_url}/#/tags")
+    add_input = page.locator(".vocab-add-input")
+    await add_input.wait_for(timeout=5000)
+    await add_input.fill("visual-test-tag")
+    add_btn = page.locator(".vocab-add-row button")
+    await add_btn.click()
+    await page.wait_for_timeout(1000)
+    pills = page.locator(".vocab-pill")
+    pill_texts: list[str] = []
+    for i in range(await pills.count()):
+        text = await pills.nth(i).inner_text()
+        pill_texts.append(text.strip())
+    found = False
+    for i in range(await pills.count()):
+        text = await pills.nth(i).inner_text()
+        if "visual-test-tag" in text:
+            remove_btn = pills.nth(i).locator(".vocab-pill-x")
+            await remove_btn.click()
+            found = True
+            break
+    assert found, f"visual-test-tag not found in pills: {pill_texts}"
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-add-remove.png"), full_page=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_tags_section_count_pills(page: Page, base_url: str) -> None:
+    """Section headings on Tags page use pill badges for counts."""
+    await page.goto(f"{base_url}/#/tags")
+    await page.wait_for_selector(".prefs-section", timeout=5000)
+    count_pills = page.locator("h2 .section-count")
+    try:
+        await count_pills.first.wait_for(timeout=3000)
+        assert await count_pills.count() >= 1
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "tags-section-counts.png"), full_page=True
+        )
+    except Exception:
+        pytest.skip("No section count pills visible")
+
+
+@pytest.mark.asyncio
+async def test_tags_learned_weights(page: Page, base_url: str) -> None:
+    """Tags page displays learned tag weights with bars and reset buttons."""
+    await page.goto(f"{base_url}/#/tags")
     weights = page.locator(".tag-weight-row")
     try:
         await weights.first.wait_for(timeout=3000)
-        # Reset buttons should have SVG icons
         reset_btns = page.locator(".btn-reset svg")
         assert await reset_btns.count() > 0
-        await page.screenshot(path=str(SCREENSHOT_DIR / "preferences-tags.png"), full_page=True)
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "tags-weights.png"), full_page=True
+        )
     except Exception:
         pytest.skip("No tag weights to display")
+
+
+@pytest.mark.asyncio
+async def test_tags_dark_mode(page: Page, base_url: str) -> None:
+    """Dark mode: tags page renders correctly."""
+    await page.emulate_media(color_scheme="dark")
+    await page.goto(f"{base_url}/#/tags")
+    await page.wait_for_selector(".prefs-section", timeout=5000)
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "dark-tags.png"), full_page=True
+    )
 
 
 # ── Sources page ───────────────────────────────────────────

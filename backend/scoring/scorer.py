@@ -62,7 +62,7 @@ async def score_batch(
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     temperature=0.2,
-                    max_output_tokens=4096,
+                    max_output_tokens=1024,
                     response_mime_type="application/json",
                     response_schema=BatchScoringResponse,
                 ),
@@ -145,9 +145,16 @@ async def score_batch(
             batch_ids=article_ids,
         )
 
-    # Normalize results
+    # Normalize results (preserve '+' prefix for new-tag suggestions)
     for result in results:
         result.relevance_score = max(0.0, min(10.0, result.relevance_score))
-        result.tags = [tag.lower().strip() for tag in result.tags]
+        normalized_tags: list[str] = []
+        for tag in result.tags:
+            stripped = tag.strip()
+            if stripped.startswith("+"):
+                normalized_tags.append("+" + stripped[1:].lower().strip())
+            else:
+                normalized_tags.append(stripped.lower())
+        result.tags = normalized_tags
 
     return ScoringBatchResult(results=results, tokens_in=tokens_in, tokens_out=tokens_out)

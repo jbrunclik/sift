@@ -22,3 +22,4 @@ We record significant architecture and design decisions as ADRs. Each decision g
 | [014](014-data-cleanup.md) | Daily data cleanup | Accepted |
 | [015](015-tag-consistency.md) | Tag consistency via LLM prompt seeding | Accepted |
 | [016](016-article-content-extraction.md) | Article content extraction via trafilatura | Accepted |
+| [017](017-managed-tag-vocabulary.md) | Managed tag vocabulary for scoring | Accepted (supersedes 015) |

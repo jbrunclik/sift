@@ -38,11 +38,22 @@ async def run_cleanup() -> None:
         )
         details["articles_deleted"] = cursor.rowcount
 
-        # Prune orphaned tags
+        # Prune stale tag_candidates where tag or article no longer exists
+        cursor = await db.execute(
+            """
+            DELETE FROM tag_candidates
+            WHERE tag_id NOT IN (SELECT id FROM tags)
+               OR article_id NOT IN (SELECT id FROM articles)
+            """
+        )
+        details["stale_candidates"] = cursor.rowcount
+
+        # Prune orphaned tags (only unapproved with no article_tags)
         cursor = await db.execute(
             """
             DELETE FROM tags
             WHERE id NOT IN (SELECT DISTINCT tag_id FROM article_tags)
+              AND is_approved = 0
             """
         )
         details["orphan_tags"] = cursor.rowcount
@@ -71,10 +82,11 @@ async def run_cleanup() -> None:
         await db.execute("VACUUM")
 
         logger.info(
-            "Cleanup complete: articles=%d, tags=%d, fetch_logs=%d, "
-            "scoring_logs=%d, scheduler_runs=%d",
+            "Cleanup complete: articles=%d, tags=%d, candidates=%d, "
+            "fetch_logs=%d, scoring_logs=%d, scheduler_runs=%d",
             details["articles_deleted"],
             details["orphan_tags"],
+            details["stale_candidates"],
             details["fetch_logs"],
             details["scoring_logs"],
             details["scheduler_runs"],

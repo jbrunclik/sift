@@ -73,6 +73,17 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [x] All checks pass: ruff, mypy --strict, pytest (81/81)
 - See [`docs/feedback-loop.md`](feedback-loop.md) for detailed explanation
 
+### Managed tag vocabulary [DONE]
+- [x] `backend/migrations/007_managed_tag_vocabulary.sql` — `is_approved` flag, `tag_candidates` table, bootstrap
+- [x] `backend/preferences/tag_vocabulary.py` — vocabulary CRUD, fuzzy resolve, auto-promote, merge
+- [x] Prompt restructured: hard vocabulary constraint + `+` prefix escape hatch (ADR-017, supersedes ADR-015)
+- [x] Pipeline post-processing: resolve tags against vocabulary, track candidates
+- [x] Scorer preserves `+` prefix through normalization
+- [x] API endpoints: vocabulary CRUD, merge, candidates approve/reject
+- [x] Frontend: vocabulary management UI in preferences (pills, add, merge, candidates)
+- [x] Cleanup: stale candidate pruning, preserve approved tags when orphaned
+- [x] Tests: 21 unit (tag_vocabulary), 4 prompt, 11 API integration — all passing
+
 ### Feedback loop [TODO — remaining]
 - [ ] `backend/preferences/cold_start.py` + cold-start wizard frontend
 - [ ] `POST /api/articles/submit-url` for manually submitting missed links
@@ -151,6 +162,11 @@ Design decisions accepted (ADRs written). Implementation complete.
 - [x] Error handling: Gemini 429 retry with exponential backoff, scoring failure visibility
 - [x] Batch scoring: concurrent with semaphore (configurable max_concurrent)
 - [ ] GitHub CI pipeline (lint, typecheck, test on push/PR)
+
+### UI Polish
+- [x] Counts in brackets use pill/badge styling (section-count class)
+- [x] Visual tests for reviewing suggested tags (candidates approve/reject flow)
+- [x] Empty feed "all caught up" state with SVG illustration
 
 ---
 

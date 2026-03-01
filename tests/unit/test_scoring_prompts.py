@@ -57,20 +57,30 @@ class TestBuildSystemPrompt:
         assert "Write all summaries in Czech" in result
         assert COLD_START_SYSTEM_PROMPT in result
 
-    def test_existing_tags_in_prompt(self) -> None:
+    def test_approved_tags_vocabulary_in_prompt(self) -> None:
         result = build_system_prompt(
-            "I like tech", "{}", "[]", existing_tags=["python", "rust", "ai"]
+            "I like tech", "{}", "[]", approved_tags=["ai", "python", "rust"]
         )
-        assert "python, rust, ai" in result
-        assert "prefer reusing these existing tags" in result
+        assert "ai, python, rust" in result
+        assert "Assign tags ONLY from this list" in result
+        assert '"+' in result  # escape hatch instruction
 
-    def test_existing_tags_in_cold_start(self) -> None:
-        result = build_system_prompt("", "{}", "[]", existing_tags=["python", "rust"])
+    def test_approved_tags_in_cold_start(self) -> None:
+        result = build_system_prompt("", "{}", "[]", approved_tags=["python", "rust"])
         assert "python, rust" in result
+        assert "Assign tags ONLY" in result
 
-    def test_no_tag_instruction_when_empty_tags(self) -> None:
-        result = build_system_prompt("I like tech", "{}", "[]", existing_tags=[])
-        assert "prefer reusing" not in result
+    def test_no_vocabulary_when_empty_tags(self) -> None:
+        result = build_system_prompt("I like tech", "{}", "[]", approved_tags=[])
+        assert "Assign tags ONLY" not in result
+
+    def test_vocabulary_before_user_profile(self) -> None:
+        result = build_system_prompt(
+            "I like tech", "{}", "[]", approved_tags=["python"]
+        )
+        vocab_pos = result.index("Tag Vocabulary")
+        profile_pos = result.index("User Profile")
+        assert vocab_pos < profile_pos
 
 
 class TestBuildBatchPrompt:

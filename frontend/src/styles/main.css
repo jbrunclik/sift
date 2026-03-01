@@ -35,6 +35,30 @@
   --max-width: 760px;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  /* Font size scale */
+  --font-xs:   0.6875rem;
+  --font-sm:   0.75rem;
+  --font-base: 0.8125rem;
+  --font-md:   0.875rem;
+  --font-lg:   0.9375rem;
+  /* Spacing scale */
+  --space-1:  0.125rem;
+  --space-2:  0.25rem;
+  --space-3:  0.375rem;
+  --space-4:  0.5rem;
+  --space-5:  0.625rem;
+  --space-6:  0.875rem;
+  --space-7:  1.25rem;
+  --space-8:  1.5rem;
+  /* Component heights */
+  --height-input:   2.375rem;
+  --height-toolbar: 2.25rem;
+  --height-icon-lg: 2rem;
+  --height-icon-sm: 1.5rem;
+  /* Icon sizes */
+  --icon-sm:  12px;
+  --icon-md:  14px;
+  --icon-lg:  16px;
   --transition-fast: 120ms ease;
   --transition: 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
   --transition-slow: 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -97,19 +121,19 @@ body {
 .page-container {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 2rem 1.25rem;
+  padding: 2rem var(--space-7);
 }
 
 h1 {
   font-size: 1.5rem;
   font-weight: 700;
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--space-8);
   letter-spacing: -0.025em;
   color: var(--color-text);
 }
 
 h2 {
-  font-size: 0.9375rem;
+  font-size: var(--font-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--color-text);
@@ -131,12 +155,12 @@ a:hover {
 
 .text-muted {
   color: var(--color-muted);
-  font-size: 0.8125rem;
+  font-size: var(--font-base);
 }
 
 .text-error {
   color: var(--color-danger);
-  font-size: 0.8125rem;
+  font-size: var(--font-base);
 }
 
 .font-medium {
@@ -145,7 +169,7 @@ a:hover {
 
 .font-mono {
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--font-base);
 }
 
 /* Smooth page transitions */

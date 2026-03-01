@@ -5,6 +5,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.database import get_db
+from backend.preferences.tag_vocabulary import (
+    add_tag,
+    get_candidates,
+    merge_tags,
+    remove_tag,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/preferences", tags=["preferences"])
@@ -145,6 +151,154 @@ async def delete_tag_weight(name: str) -> dict[str, str]:
             """,
             (json.dumps(weights), version + 1),
         )
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+# --- Tag Vocabulary ---
+
+
+class VocabularyTag(BaseModel):
+    id: int
+    name: str
+    article_count: int
+
+
+class VocabularyAddRequest(BaseModel):
+    name: str
+
+
+class VocabularyMergeRequest(BaseModel):
+    source_id: int
+    target_id: int
+
+
+class CandidateTag(BaseModel):
+    id: int
+    name: str
+    occurrences: int
+
+
+@router.get("/vocabulary")
+async def list_vocabulary() -> list[VocabularyTag]:
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall(
+            """
+            SELECT t.id, t.name, COUNT(at.article_id) as article_count
+            FROM tags t
+            LEFT JOIN article_tags at ON t.id = at.tag_id
+            WHERE t.is_approved = 1
+            GROUP BY t.id
+            ORDER BY t.name
+            """
+        )
+        return [
+            VocabularyTag(id=int(r[0]), name=str(r[1]), article_count=int(r[2]))
+            for r in rows
+        ]
+    finally:
+        await db.close()
+
+
+@router.post("/vocabulary")
+async def add_vocabulary_tag(req: VocabularyAddRequest) -> VocabularyTag:
+    db = await get_db()
+    try:
+        tag_id = await add_tag(db, req.name)
+        await db.commit()
+        # Fetch article count
+        count_rows = list(
+            await db.execute_fetchall(
+                "SELECT COUNT(*) FROM article_tags WHERE tag_id = ?", (tag_id,)
+            )
+        )
+        return VocabularyTag(
+            id=tag_id,
+            name=req.name.lower().strip(),
+            article_count=int(count_rows[0][0]),
+        )
+    finally:
+        await db.close()
+
+
+@router.delete("/vocabulary/{tag_id}")
+async def remove_vocabulary_tag(tag_id: int) -> dict[str, str]:
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall("SELECT id FROM tags WHERE id = ?", (tag_id,))
+        if not rows:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        await remove_tag(db, tag_id)
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+@router.post("/vocabulary/merge")
+async def merge_vocabulary_tags(req: VocabularyMergeRequest) -> dict[str, str]:
+    db = await get_db()
+    try:
+        # Verify both tags exist
+        for tid in (req.source_id, req.target_id):
+            rows = await db.execute_fetchall("SELECT id FROM tags WHERE id = ?", (tid,))
+            if not rows:
+                raise HTTPException(status_code=404, detail=f"Tag {tid} not found")
+        if req.source_id == req.target_id:
+            raise HTTPException(status_code=400, detail="Cannot merge a tag into itself")
+        await merge_tags(db, req.source_id, req.target_id)
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+@router.get("/vocabulary/candidates")
+async def list_candidates() -> list[CandidateTag]:
+    db = await get_db()
+    try:
+        candidates = await get_candidates(db)
+        return [
+            CandidateTag(
+                id=int(str(c["id"])),
+                name=str(c["name"]),
+                occurrences=int(str(c["occurrences"])),
+            )
+            for c in candidates
+        ]
+    finally:
+        await db.close()
+
+
+@router.post("/vocabulary/candidates/{tag_id}/approve")
+async def approve_candidate(tag_id: int) -> dict[str, str]:
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall(
+            "SELECT id FROM tags WHERE id = ? AND is_approved = 0", (tag_id,)
+        )
+        if not rows:
+            raise HTTPException(status_code=404, detail="Candidate tag not found")
+        await db.execute("UPDATE tags SET is_approved = 1 WHERE id = ?", (tag_id,))
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+@router.delete("/vocabulary/candidates/{tag_id}")
+async def reject_candidate(tag_id: int) -> dict[str, str]:
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall(
+            "SELECT id FROM tags WHERE id = ? AND is_approved = 0", (tag_id,)
+        )
+        if not rows:
+            raise HTTPException(status_code=404, detail="Candidate tag not found")
+        await db.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
         await db.commit()
         return {"status": "ok"}
     finally:
