@@ -3,8 +3,6 @@ import type { Article } from "../types";
 import { el, formatDate, scoreColor, truncate } from "../utils";
 import { showToast } from "./toast";
 
-const CURATED_THRESHOLD = 7.0;
-
 function shortTitle(title: string, max = 40): string {
   if (title.length <= max) return title;
   return title.slice(0, max - 1) + "\u2026";
@@ -216,25 +214,6 @@ export function ArticleCard(
   const spacer = el("span", { class: "card-actions-spacer" });
   actions.appendChild(spacer);
 
-  // "Missed" button (secondary)
-  const isBelowThreshold =
-    article.relevance_score !== null &&
-    article.relevance_score < CURATED_THRESHOLD;
-
-  if (isBelowThreshold && article.feedback !== 1) {
-    const missedBtn = el("button", {
-      class: "btn-feedback btn-missed",
-      title: "Should have been in my feed",
-    });
-    missedBtn.textContent = "Missed";
-    missedBtn.addEventListener("click", async () => {
-      await sendFeedback(article.id, 1);
-      article.feedback = 1;
-      showToast("Noted \u2014 Sift will learn from this", "success");
-      exitCard();
-    });
-    actions.appendChild(missedBtn);
-  }
 
   // "Why?" button (subtle, secondary)
   if (article.score_explanation) {

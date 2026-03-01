@@ -314,19 +314,6 @@
   fill-opacity: 0.15;
 }
 
-.btn-feedback.btn-missed {
-  color: var(--color-primary);
-  border-color: var(--color-primary);
-  font-size: var(--font-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.btn-feedback.btn-missed:hover {
-  background: var(--color-primary-subtle);
-}
-
 .btn-feedback.btn-read-toggle {
   /* sits between up/down — no extra margin */
 }
