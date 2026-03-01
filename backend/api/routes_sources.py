@@ -73,6 +73,7 @@ class SourceUpdate(BaseModel):
     name: str | None = None
     enabled: bool | None = None
     fetch_interval_minutes: int | None = None
+    config_json: str | None = None
 
 
 @router.patch("/{source_id}")
@@ -97,6 +98,14 @@ async def update_source(source_id: int, data: SourceUpdate) -> Source:
         if data.fetch_interval_minutes is not None:
             updates.append("fetch_interval_minutes = ?")
             params.append(data.fetch_interval_minutes)
+        if data.config_json is not None:
+            # Validate it's valid JSON
+            try:
+                json.loads(data.config_json)
+            except json.JSONDecodeError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid config_json: {e}") from e
+            updates.append("config_json = ?")
+            params.append(data.config_json)
 
         if updates:
             params.append(source_id)
@@ -158,7 +167,7 @@ async def trigger_fetch(source_id: int) -> FetchLog:
         try:
             async with httpx.AsyncClient() as http_client:
                 config = SourceConfig(str(source_row["config_json"]))
-                source = source_cls(config=config, http_client=http_client)
+                source = source_cls(config=config, http_client=http_client, source_id=source_id)
                 raw_articles = await source.fetch()
 
             items_new = 0

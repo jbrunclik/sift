@@ -41,7 +41,7 @@ async def fetch_source(source_id: int) -> None:
         try:
             async with httpx.AsyncClient() as http_client:
                 config = SourceConfig(str(source_row["config_json"]))
-                source = source_cls(config=config, http_client=http_client)
+                source = source_cls(config=config, http_client=http_client, source_id=source_id)
                 raw_articles = await source.fetch()
 
             items_new = 0

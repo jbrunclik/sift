@@ -454,7 +454,7 @@ async def test_tags_dark_mode(page: Page, base_url: str) -> None:
 
 @pytest.mark.asyncio
 async def test_sources_page_form(page: Page, base_url: str) -> None:
-    """Sources page renders the add-source form with SVG add button."""
+    """Sources page renders the add-source form with segmented control and add button."""
     await page.goto(f"{base_url}/#/sources")
     await page.wait_for_selector(".source-form")
     category = page.locator(".input-category")
@@ -463,6 +463,27 @@ async def test_sources_page_form(page: Page, base_url: str) -> None:
     add_btn = page.locator(".btn-icon-text svg")
     assert await add_btn.count() >= 1
     await page.screenshot(path=str(SCREENSHOT_DIR / "sources.png"), full_page=True)
+
+
+@pytest.mark.asyncio
+async def test_sources_segmented_control(page: Page, base_url: str) -> None:
+    """Sources form has a segmented control with RSS Feed and Web Page options."""
+    await page.goto(f"{base_url}/#/sources")
+    segmented = page.locator(".segmented-control")
+    await segmented.wait_for(timeout=3000)
+    btns = page.locator(".segmented-btn")
+    assert await btns.count() == 2
+    # First button (RSS) should be active by default
+    rss_btn = btns.first
+    assert "segmented-active" in (await rss_btn.get_attribute("class") or "")
+    # Click Web Page — it should become active
+    web_btn = btns.nth(1)
+    await web_btn.click()
+    assert "segmented-active" in (await web_btn.get_attribute("class") or "")
+    assert "segmented-active" not in (await rss_btn.get_attribute("class") or "")
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "sources-segmented-web.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
@@ -487,13 +508,30 @@ async def test_sources_list_with_icons(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_sources_type_badges(page: Page, base_url: str) -> None:
+    """Source rows display type badges (RSS or WEB)."""
+    await page.goto(f"{base_url}/#/sources")
+    badges = page.locator(".source-type-badge")
+    try:
+        await badges.first.wait_for(timeout=5000)
+        assert await badges.count() >= 1
+        # Badge should contain text RSS or WEB
+        text = await badges.first.text_content()
+        assert text in ("RSS", "WEB")
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "sources-type-badges.png"), full_page=True
+        )
+    except Exception:
+        pytest.skip("No sources configured")
+
+
+@pytest.mark.asyncio
 async def test_sources_category_display(page: Page, base_url: str) -> None:
     """Sources show category labels (or 'Uncategorized' placeholder) that are clickable."""
     await page.goto(f"{base_url}/#/sources")
     cats = page.locator(".source-category")
     try:
         await cats.first.wait_for(timeout=5000)
-        # At least one category label should exist
         assert await cats.count() >= 1
         await page.screenshot(path=str(SCREENSHOT_DIR / "sources-categories.png"), full_page=True)
     except Exception:
@@ -510,11 +548,9 @@ async def test_sources_category_edit_inline(page: Page, base_url: str) -> None:
     except Exception:
         pytest.skip("No sources configured")
     await cat.click()
-    # Inline input should appear
     inline_input = page.locator(".input-inline")
     await inline_input.wait_for(timeout=2000)
     await page.screenshot(path=str(SCREENSHOT_DIR / "sources-category-edit.png"), full_page=True)
-    # Press Escape to cancel
     await page.keyboard.press("Escape")
 
 
@@ -532,11 +568,9 @@ async def test_sources_delete_modal(page: Page, base_url: str) -> None:
     await modal.wait_for(timeout=2000)
     dialog = page.locator(".modal-dialog")
     assert await dialog.count() == 1
-    # Should have danger-styled confirm button
     danger_btn = page.locator(".modal-btn-danger")
     assert await danger_btn.count() == 1
     await page.screenshot(path=str(SCREENSHOT_DIR / "sources-delete-modal.png"))
-    # Cancel the modal
     await page.click(".modal-btn-cancel")
     await modal.wait_for(state="hidden", timeout=2000)
 
@@ -552,6 +586,56 @@ async def test_sources_favicons(page: Page, base_url: str) -> None:
         await page.screenshot(path=str(SCREENSHOT_DIR / "sources-favicons.png"))
     except Exception:
         pytest.skip("No sources with favicons")
+
+
+@pytest.mark.asyncio
+async def test_sources_extraction_rules_toggle(page: Page, base_url: str) -> None:
+    """Web page sources show an extraction rules toggle bar."""
+    await page.goto(f"{base_url}/#/sources")
+    toggle = page.locator(".source-rules-toggle")
+    try:
+        await toggle.first.wait_for(timeout=5000)
+        # Should have brain icon and label
+        icon = toggle.first.locator(".source-rules-icon")
+        assert await icon.count() >= 1
+        label = toggle.first.locator(".source-rules-label")
+        assert await label.count() == 1
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "sources-rules-toggle.png"), full_page=True
+        )
+    except Exception:
+        pytest.skip("No web page sources configured")
+
+
+@pytest.mark.asyncio
+async def test_sources_extraction_rules_panel(page: Page, base_url: str) -> None:
+    """Clicking the rules toggle expands the extraction rules panel."""
+    await page.goto(f"{base_url}/#/sources")
+    toggle = page.locator(".source-rules-toggle")
+    try:
+        await toggle.first.wait_for(timeout=5000)
+    except Exception:
+        pytest.skip("No web page sources configured")
+    # Click to expand
+    await toggle.first.click()
+    panel = page.locator(".source-rules-panel")
+    await panel.first.wait_for(state="visible", timeout=2000)
+    # Should show rules grid with key-value pairs
+    keys = panel.first.locator(".rules-key")
+    values = panel.first.locator(".rules-value")
+    key_count = await keys.count()
+    if key_count == 0:
+        pytest.skip("No learned extraction rules")
+    assert key_count >= 2  # At least Items + Title
+    assert await values.count() >= 2
+    # Should have re-learn button
+    relearn = panel.first.locator(".source-rules-relearn")
+    assert await relearn.count() == 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "sources-rules-panel.png"), full_page=True
+    )
+    # Click again to collapse
+    await toggle.first.click()
 
 
 # ── Nav bar ────────────────────────────────────────────────

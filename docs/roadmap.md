@@ -134,13 +134,13 @@ Design decisions accepted (ADRs written). Implementation complete.
 - [x] SPA router cleanup (MutationObserver for event listener removal)
 - [x] Consistent toolbar height (36px CSS variable)
 
-## Phase 3: More Sources [TODO]
+## Phase 3: More Sources [IN PROGRESS]
 
+- [x] `backend/sources/webpage.py` (generic web page with LLM-learned CSS extraction rules)
 - [ ] `backend/sources/hackernews.py` (Firebase REST API)
 - [ ] `backend/sources/youtube.py` (YouTube RSS feeds)
 - [ ] `backend/sources/reddit.py` (httpx-based, asyncpraw has dep conflicts)
 - [ ] `backend/sources/hncz.py` (RSS/scrape)
-- [ ] `backend/sources/mczlicin.py` (httpx or Playwright)
 - [ ] `backend/sources/playwright_pool.py` (shared browser instance, if needed)
 
 ## Phase 4: MCP Server + Preference Refinement [TODO]

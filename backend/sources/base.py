@@ -32,10 +32,12 @@ class BaseSource(ABC):
         config: SourceConfig,
         http_client: httpx.AsyncClient,
         playwright_context: Any | None = None,
+        source_id: int | None = None,
     ) -> None:
         self.config = config
         self.http: httpx.AsyncClient = http_client
         self.playwright_context = playwright_context
+        self.source_id = source_id
 
     @abstractmethod
     async def fetch(self) -> list[RawArticle]:
