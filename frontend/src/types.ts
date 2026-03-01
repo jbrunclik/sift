@@ -63,6 +63,18 @@ export interface StatsResponse {
   sources: Record<string, unknown>[];
 }
 
+export interface UserPreferences {
+  prose_profile: string;
+  interests: string[];
+  tag_weights: Record<string, number>;
+  profile_version: number;
+}
+
+export interface TagWeight {
+  name: string;
+  weight: number;
+}
+
 export interface FetchLog {
   id: number;
   source_id: number;

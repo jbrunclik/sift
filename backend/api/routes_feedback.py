@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from backend.database import get_db
 from backend.models import Feedback, FeedbackCreate
+from backend.preferences.feedback_processor import process_feedback
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/feedback", tags=["feedback"])
@@ -31,6 +32,7 @@ async def create_feedback(feedback: FeedbackCreate) -> Feedback:
             """,
             (feedback.article_id, feedback.rating),
         )
+        await process_feedback(db, feedback.article_id, feedback.rating)
         await db.commit()
 
         rows = list(

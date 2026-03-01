@@ -1,5 +1,6 @@
 import { NavBar } from "./components/nav-bar";
 import { FeedPage } from "./pages/feed";
+import { PreferencesPage } from "./pages/preferences";
 import { SourcesPage } from "./pages/sources";
 import { StatsPage } from "./pages/stats";
 import { initRouter, registerRoute } from "./router";
@@ -18,6 +19,7 @@ app.appendChild(pageContainer);
 registerRoute("feed", FeedPage);
 registerRoute("sources", SourcesPage);
 registerRoute("stats", StatsPage);
+registerRoute("preferences", PreferencesPage);
 
 // Start router
 initRouter(pageContainer);

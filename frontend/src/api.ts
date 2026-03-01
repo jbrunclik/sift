@@ -5,6 +5,8 @@ import type {
   HealthResponse,
   Source,
   StatsResponse,
+  TagWeight,
+  UserPreferences,
 } from "./types";
 
 const BASE = "/api";
@@ -92,6 +94,30 @@ export function sendFeedback(
   return request<Feedback>("/feedback", {
     method: "POST",
     body: JSON.stringify({ article_id: articleId, rating }),
+  });
+}
+
+// Preferences
+export function getPreferences(): Promise<UserPreferences> {
+  return request<UserPreferences>("/preferences");
+}
+
+export function updatePreferences(
+  data: { prose_profile?: string; interests?: string[] }
+): Promise<UserPreferences> {
+  return request<UserPreferences>("/preferences", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getTagWeights(): Promise<TagWeight[]> {
+  return request<TagWeight[]>("/preferences/tags");
+}
+
+export function resetTagWeight(name: string): Promise<void> {
+  return request(`/preferences/tags/${encodeURIComponent(name)}`, {
+    method: "DELETE",
   });
 }
 

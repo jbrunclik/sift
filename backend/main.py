@@ -78,11 +78,13 @@ def create_app() -> FastAPI:
     from backend.api.routes_articles import router as articles_router
     from backend.api.routes_feedback import router as feedback_router
     from backend.api.routes_health import router as health_router
+    from backend.api.routes_preferences import router as preferences_router
     from backend.api.routes_sources import router as sources_router
 
     app.include_router(articles_router)
     app.include_router(sources_router)
     app.include_router(feedback_router)
+    app.include_router(preferences_router)
     app.include_router(health_router)
 
     # Serve frontend static files if built

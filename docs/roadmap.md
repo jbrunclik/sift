@@ -59,13 +59,24 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [x] Tests: prompts (10), deduplicator (10), scorer (10), pipeline (7) — 37 new tests
 - [x] All checks pass: ruff, mypy --strict, pytest (53/53)
 
-### Feedback loop [TODO]
+### Feedback loop [DONE]
+- [x] `backend/preferences/tag_weights.py` — pure functions: clamp, adjust_weights, prune_zero_weights
+- [x] `backend/preferences/feedback_processor.py` — process_feedback wired into feedback API
+- [x] `backend/preferences/__init__.py` — public API exports
+- [x] `backend/api/routes_preferences.py` — GET/PUT preferences, GET/DELETE tag weights
+- [x] `backend/api/routes_articles.py` — fixed: tags now populated from article_tags/tags join
+- [x] `backend/api/routes_feedback.py` — wired to feedback processor (same transaction)
+- [x] Frontend: preferences page (prose profile, interests, learned tag weights)
+- [x] Frontend: "Why?" button on article cards (score explanation toggle)
+- [x] Frontend: score badge tooltip with explanation
+- [x] Tests: tag_weights (18), feedback_processor (7), integration (3) — 28 new tests
+- [x] All checks pass: ruff, mypy --strict, pytest (81/81)
+- See [`docs/feedback-loop.md`](feedback-loop.md) for detailed explanation
+
+### Feedback loop [TODO — remaining]
 - [ ] `backend/preferences/cold_start.py` + cold-start wizard frontend
-- [ ] `backend/preferences/tag_weights.py` + `feedback_processor.py`
-- [ ] `backend/api/routes_preferences.py`
-- [ ] Frontend: tag chips, score explanation tooltip
 - [ ] `POST /api/articles/submit-url` for manually submitting missed links
-- [ ] Tests: tag weights, feedback processor, feedback flow integration
+- [ ] Periodic prose profile synthesis from tag weights + feedback history
 
 ## Phase 3: More Sources [TODO]
 

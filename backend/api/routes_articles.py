@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+import aiosqlite
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.database import get_db
@@ -11,6 +12,26 @@ router = APIRouter(prefix="/api/articles", tags=["articles"])
 
 # Default threshold: only show articles the LLM is confident about
 CURATED_MIN_SCORE = 7.0
+
+
+async def _load_tags_for_articles(
+    db: aiosqlite.Connection, article_ids: list[int]
+) -> dict[int, list[str]]:
+    """Batch-load tags for a list of article IDs."""
+    if not article_ids:
+        return {}
+    placeholders = ",".join("?" for _ in article_ids)
+    rows = await db.execute_fetchall(
+        f"SELECT at.article_id, t.name FROM article_tags at "
+        f"JOIN tags t ON at.tag_id = t.id "
+        f"WHERE at.article_id IN ({placeholders})",
+        article_ids,
+    )
+    result: dict[int, list[str]] = {}
+    for row in rows:
+        aid = int(row[0])
+        result.setdefault(aid, []).append(str(row[1]))
+    return result
 
 
 def _row_to_article(row: Any) -> Article:
@@ -110,7 +131,11 @@ async def list_articles(
         args.extend([params.limit, params.offset])
 
         rows = await db.execute_fetchall(query, args)
-        return [_row_to_article(dict(row)) for row in rows]
+        articles = [_row_to_article(dict(row)) for row in rows]
+        tags_map = await _load_tags_for_articles(db, [a.id for a in articles])
+        for article in articles:
+            article.tags = tags_map.get(article.id, [])
+        return articles
     finally:
         await db.close()
 
@@ -136,7 +161,10 @@ async def get_article(article_id: int) -> Article:
         )
         if not rows:
             raise HTTPException(status_code=404, detail="Article not found")
-        return _row_to_article(dict(rows[0]))
+        article = _row_to_article(dict(rows[0]))
+        tags_map = await _load_tags_for_articles(db, [article.id])
+        article.tags = tags_map.get(article.id, [])
+        return article
     finally:
         await db.close()
 

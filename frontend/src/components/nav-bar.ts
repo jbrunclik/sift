@@ -19,6 +19,7 @@ export function NavBar(): HTMLElement {
       { path: "feed", label: "Feed" },
       { path: "sources", label: "Sources" },
       { path: "stats", label: "Stats" },
+      { path: "preferences", label: "Preferences" },
     ];
 
     for (const page of pages) {

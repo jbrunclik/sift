@@ -23,6 +23,9 @@ export function ArticleCard(
       article.relevance_score.toFixed(1)
     );
     score.style.backgroundColor = scoreColor(article.relevance_score);
+    if (article.score_explanation) {
+      score.title = article.score_explanation;
+    }
     header.appendChild(score);
   }
 
@@ -141,6 +144,29 @@ export function ArticleCard(
     }
     onUpdate?.();
   });
+
+  // "Why?" button to show score explanation
+  if (article.score_explanation) {
+    const whyBtn = el("button", { class: "btn-feedback btn-why", title: "Score explanation" });
+    whyBtn.textContent = "Why?";
+    let explanationPanel: HTMLElement | null = null;
+    whyBtn.addEventListener("click", () => {
+      if (explanationPanel) {
+        explanationPanel.remove();
+        explanationPanel = null;
+        whyBtn.classList.remove("active");
+      } else {
+        explanationPanel = el(
+          "div",
+          { class: "score-explanation" },
+          article.score_explanation!
+        );
+        card.appendChild(explanationPanel);
+        whyBtn.classList.add("active");
+      }
+    });
+    actions.appendChild(whyBtn);
+  }
 
   actions.appendChild(thumbUp);
   actions.appendChild(thumbDown);
