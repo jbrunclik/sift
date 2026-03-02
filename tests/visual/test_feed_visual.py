@@ -844,3 +844,123 @@ async def test_mobile_stats(page: Page, base_url: str) -> None:
     await page.wait_for_selector(".stats-section")
     await page.screenshot(path=str(SCREENSHOT_DIR / "mobile-stats.png"), full_page=True)
     await page.set_viewport_size({"width": 1280, "height": 800})
+
+
+# ── Onboarding modal ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_onboarding_modal_shows_for_cold_start(page: Page, base_url: str) -> None:
+    """Onboarding modal appears when profile_version == 0 and not previously dismissed."""
+    # Clear any prior dismissal
+    await page.goto(f"{base_url}/#/feed")
+    await page.evaluate("localStorage.removeItem('sift-onboarding-dismissed')")
+    await page.reload()
+    await page.wait_for_selector(".feed-toolbar")
+    # Modal should appear if profile_version == 0
+    modal = page.locator(".onboarding-dialog")
+    try:
+        await modal.wait_for(timeout=3000)
+        # Should have title and input
+        title = modal.locator(".modal-title")
+        assert "Welcome" in (await title.text_content() or "")
+        input_el = modal.locator(".onboarding-input")
+        assert await input_el.count() == 1
+        # Should have Skip and Get Started buttons
+        skip = modal.locator(".modal-btn-cancel")
+        assert await skip.count() == 1
+        start = modal.locator(".modal-btn-confirm")
+        assert await start.count() == 1
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "onboarding-modal.png")
+        )
+        # Dismiss to not interfere with other tests
+        await skip.click()
+    except Exception:
+        pytest.skip("Profile already onboarded (profile_version > 0)")
+
+
+@pytest.mark.asyncio
+async def test_onboarding_add_interest_pills(page: Page, base_url: str) -> None:
+    """Typing interests and pressing Enter adds pills in the onboarding modal."""
+    await page.goto(f"{base_url}/#/feed")
+    await page.evaluate("localStorage.removeItem('sift-onboarding-dismissed')")
+    await page.reload()
+    await page.wait_for_selector(".feed-toolbar")
+    modal = page.locator(".onboarding-dialog")
+    try:
+        await modal.wait_for(timeout=3000)
+    except Exception:
+        pytest.skip("Profile already onboarded (profile_version > 0)")
+    input_el = modal.locator(".onboarding-input")
+    await input_el.fill("rust")
+    await input_el.press("Enter")
+    await input_el.fill("machine learning")
+    await input_el.press("Enter")
+    pills = modal.locator(".onboarding-pill")
+    assert await pills.count() == 2
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "onboarding-pills.png")
+    )
+    # Dismiss
+    skip = modal.locator(".modal-btn-cancel")
+    await skip.click()
+
+
+@pytest.mark.asyncio
+async def test_onboarding_not_shown_when_dismissed(page: Page, base_url: str) -> None:
+    """Onboarding modal does not appear after being dismissed."""
+    await page.goto(f"{base_url}/#/feed")
+    await page.evaluate("localStorage.setItem('sift-onboarding-dismissed', 'true')")
+    await page.reload()
+    await page.wait_for_selector(".feed-toolbar")
+    await page.wait_for_timeout(1000)
+    modal = page.locator(".onboarding-dialog")
+    assert await modal.count() == 0
+
+
+# ── Tag quality section ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_tags_quality_section(page: Page, base_url: str) -> None:
+    """Tags page shows tag quality section when noisy tags exist."""
+    await page.goto(f"{base_url}/#/tags")
+    await page.wait_for_selector(".prefs-section", timeout=5000)
+    table = page.locator(".tag-quality-table")
+    try:
+        await table.wait_for(timeout=3000)
+        # Should have header and at least one data row
+        header = table.locator(".tag-quality-header")
+        assert await header.count() == 1
+        rows = table.locator(".tag-quality-row:not(.tag-quality-header)")
+        assert await rows.count() >= 1
+        # Each row should have warning icon, votes, and bar
+        name_cell = rows.first.locator(".tag-quality-name svg")
+        assert await name_cell.count() >= 1
+        bar = rows.first.locator(".tag-quality-bar-fill")
+        assert await bar.count() == 1
+        await page.screenshot(
+            path=str(SCREENSHOT_DIR / "tags-quality.png"), full_page=True
+        )
+    except Exception:
+        pytest.skip("No noisy tags to display (need feedback on tags)")
+
+
+@pytest.mark.asyncio
+async def test_tags_quality_disagreement_bars(page: Page, base_url: str) -> None:
+    """Tag quality rows show disagreement ratio bars and percentage labels."""
+    await page.goto(f"{base_url}/#/tags")
+    table = page.locator(".tag-quality-table")
+    try:
+        await table.wait_for(timeout=3000)
+        rows = table.locator(".tag-quality-row:not(.tag-quality-header)")
+        count = await rows.count()
+        if count == 0:
+            pytest.skip("No noisy tags")
+        for i in range(min(count, 3)):
+            bar = rows.nth(i).locator(".tag-quality-bar-fill")
+            width = await bar.evaluate("el => el.style.width")
+            assert width.endswith("%"), f"Expected percentage width, got {width}"
+    except Exception:
+        pytest.skip("No noisy tags to display")

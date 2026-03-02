@@ -7,8 +7,10 @@ import type {
   FetchLog,
   HealthResponse,
   IssuesResponse,
+  OnboardingResponse,
   Source,
   StatsResponse,
+  TagQualityEntry,
   TagWeight,
   TestAuthResponse,
   UserPreferences,
@@ -227,4 +229,20 @@ export function testSourceAuth(id: number): Promise<TestAuthResponse> {
 
 export function getAuthIssues(): Promise<AuthIssueEntry[]> {
   return request<AuthIssueEntry[]>("/stats/auth-issues");
+}
+
+// Tag quality
+export function getTagQuality(): Promise<TagQualityEntry[]> {
+  return request<TagQualityEntry[]>("/preferences/vocabulary/quality");
+}
+
+// Onboarding
+export function postOnboarding(
+  interests: string[],
+  prose_profile?: string
+): Promise<OnboardingResponse> {
+  return request<OnboardingResponse>("/onboarding", {
+    method: "POST",
+    body: JSON.stringify({ interests, prose_profile: prose_profile ?? "" }),
+  });
 }

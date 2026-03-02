@@ -143,3 +143,17 @@ export interface CandidateTag {
   name: string;
   occurrences: number;
 }
+
+export interface TagQualityEntry {
+  tag_id: number;
+  name: string;
+  positive_votes: number;
+  negative_votes: number;
+  total_votes: number;
+  disagreement_ratio: number;
+}
+
+export interface OnboardingResponse {
+  profile_version: number;
+  tags_seeded: number;
+}

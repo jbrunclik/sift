@@ -8,6 +8,7 @@ from backend.scoring.scorer import (
     BatchTooLargeError,
     ScoringError,
     ScoringResult,
+    TagScore,
     create_gemini_client,
     score_batch,
 )
@@ -38,7 +39,10 @@ def _make_batch_response(scores: list[float]) -> BatchScoringResponse:
                 relevance_score=score,
                 summary=f"Summary for article with score {score}",
                 explanation=f"Explanation for score {score}",
-                tags=["tag1", "tag2"],
+                tags=[
+                    TagScore(name="tag1", confidence=0.9),
+                    TagScore(name="tag2", confidence=0.7),
+                ],
             )
             for score in scores
         ]
@@ -67,7 +71,7 @@ class TestScoreBatch:
                         "relevance_score": 8.0,
                         "summary": "Good article",
                         "explanation": "Relevant",
-                        "tags": ["Python"],
+                        "tags": [{"name": "Python", "confidence": 0.9}],
                     }
                 ]
             }
@@ -87,7 +91,7 @@ class TestScoreBatch:
                     "relevance_score": 5.0,
                     "summary": "Ok article",
                     "explanation": "Average",
-                    "tags": ["tech"],
+                    "tags": [{"name": "tech", "confidence": 0.8}],
                 }
             ]
         )
@@ -105,13 +109,13 @@ class TestScoreBatch:
                     relevance_score=15.0,
                     summary="s",
                     explanation="e",
-                    tags=["t"],
+                    tags=[TagScore(name="t", confidence=0.5)],
                 ),
                 ScoringResult(
                     relevance_score=-3.0,
                     summary="s",
                     explanation="e",
-                    tags=["t"],
+                    tags=[TagScore(name="t", confidence=0.5)],
                 ),
             ]
         )
@@ -129,14 +133,68 @@ class TestScoreBatch:
                     relevance_score=5.0,
                     summary="s",
                     explanation="e",
-                    tags=["  Python ", "RUST", " Machine Learning "],
+                    tags=[
+                        TagScore(name="  Python ", confidence=0.9),
+                        TagScore(name="RUST", confidence=0.8),
+                        TagScore(name=" Machine Learning ", confidence=0.7),
+                    ],
                 )
             ]
         )
         client = _mock_client(parsed=batch_resp)
 
         batch_result = await score_batch(client, "system", "batch", [1])
-        assert batch_result.results[0].tags == ["python", "rust", "machine learning"]
+        tag_names = [t.name for t in batch_result.results[0].tags]
+        assert tag_names == ["python", "rust", "machine learning"]
+
+    @pytest.mark.asyncio
+    async def test_confidence_clamping(self) -> None:
+        batch_resp = BatchScoringResponse(
+            results=[
+                ScoringResult(
+                    relevance_score=5.0,
+                    summary="s",
+                    explanation="e",
+                    tags=[
+                        TagScore(name="high", confidence=1.5),
+                        TagScore(name="low", confidence=-0.3),
+                        TagScore(name="normal", confidence=0.7),
+                    ],
+                )
+            ]
+        )
+        client = _mock_client(parsed=batch_resp)
+
+        batch_result = await score_batch(client, "system", "batch", [1])
+        tags = batch_result.results[0].tags
+        assert tags[0].confidence == 1.0
+        assert tags[1].confidence == 0.0
+        assert tags[2].confidence == 0.7
+
+    @pytest.mark.asyncio
+    async def test_flat_string_tags_coerced_to_tag_score(self) -> None:
+        """Gemini returning flat strings should be coerced to TagScore with confidence 1.0."""
+        text = json.dumps(
+            {
+                "results": [
+                    {
+                        "relevance_score": 6.0,
+                        "summary": "s",
+                        "explanation": "e",
+                        "tags": ["python", "testing"],
+                    }
+                ]
+            }
+        )
+        client = _mock_client(parsed=None, text=text)
+
+        batch_result = await score_batch(client, "system", "batch", [1])
+        tags = batch_result.results[0].tags
+        assert len(tags) == 2
+        assert tags[0].name == "python"
+        assert tags[0].confidence == 1.0
+        assert tags[1].name == "testing"
+        assert tags[1].confidence == 1.0
 
     @pytest.mark.asyncio
     async def test_result_count_mismatch_raises(self) -> None:

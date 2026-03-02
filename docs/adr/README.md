@@ -25,3 +25,6 @@ We record significant architecture and design decisions as ADRs. Each decision g
 | [017](017-managed-tag-vocabulary.md) | Managed tag vocabulary for scoring | Accepted (supersedes 015) |
 | [018](018-webpage-source-llm-learned-extraction.md) | Web page source with LLM-learned extraction | Accepted |
 | [019](019-per-source-authentication.md) | Per-source authentication with truncation detection | Accepted |
+| [020](020-tag-confidence-end-to-end.md) | Tag confidence end-to-end | Accepted |
+| [021](021-post-llm-score-adjustment.md) | Post-LLM score adjustment | Accepted |
+| [022](022-profile-synthesis-and-decay.md) | Profile synthesis and decay | Accepted |

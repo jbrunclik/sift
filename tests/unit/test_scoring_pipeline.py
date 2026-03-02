@@ -9,6 +9,7 @@ from backend.scoring.scorer import (
     ScoringBatchResult,
     ScoringError,
     ScoringResult,
+    TagScore,
 )
 
 # Distinct titles that won't fuzzy-match each other (< 0.80 similarity)
@@ -55,12 +56,18 @@ async def _insert_article(
     return cursor.lastrowid  # type: ignore[return-value]
 
 
-def _make_result(score: float = 7.5, tags: list[str] | None = None) -> ScoringResult:
+def _make_result(
+    score: float = 7.5, tags: list[TagScore] | None = None
+) -> ScoringResult:
     return ScoringResult(
         relevance_score=score,
         summary="Test summary",
         explanation="Test explanation",
-        tags=tags or ["python", "testing"],
+        tags=tags
+        or [
+            TagScore(name="python", confidence=0.9),
+            TagScore(name="testing", confidence=0.8),
+        ],
     )
 
 
@@ -85,7 +92,10 @@ class TestRunScoringPipeline:
             db, source_id, url="https://b.com/2", title="Kubernetes Scaling Best Practices"
         )
 
-        results = [_make_result(8.0, ["ai"]), _make_result(5.0, ["news"])]
+        results = [
+            _make_result(8.0, [TagScore(name="ai", confidence=0.95)]),
+            _make_result(5.0, [TagScore(name="news", confidence=0.8)]),
+        ]
 
         p_client, p_db, p_close = _patch_pipeline(db)
         with (
@@ -209,7 +219,7 @@ class TestRunScoringPipeline:
         ):
             mock_client.return_value = MagicMock()
             mock_score.return_value = ScoringBatchResult(
-                results=[_make_result(7.0, ["python", "testing"])],
+                results=[_make_result(7.0)],
                 tokens_in=50,
                 tokens_out=100,
             )
@@ -227,6 +237,51 @@ class TestRunScoringPipeline:
             "SELECT tag_id FROM article_tags WHERE article_id = ?", (art_id,)
         )
         assert len(at_rows) == 2
+
+    @pytest.mark.asyncio
+    async def test_tag_confidence_stored(self, db: aiosqlite.Connection) -> None:
+        source_id = await _insert_source(db)
+        art_id = await _insert_article(db, source_id)
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch("backend.scoring.pipeline.score_batch", new_callable=AsyncMock) as mock_score,
+        ):
+            mock_client.return_value = MagicMock()
+            mock_score.return_value = ScoringBatchResult(
+                results=[
+                    _make_result(
+                        7.0,
+                        [
+                            TagScore(name="python", confidence=0.85),
+                            TagScore(name="testing", confidence=0.6),
+                        ],
+                    )
+                ],
+                tokens_in=50,
+                tokens_out=100,
+            )
+
+            await run_scoring_pipeline()
+
+        # Check confidence values stored
+        rows = await db.execute_fetchall(
+            """
+            SELECT t.name, at.confidence
+            FROM article_tags at
+            JOIN tags t ON at.tag_id = t.id
+            WHERE at.article_id = ?
+            ORDER BY t.name
+            """,
+            (art_id,),
+        )
+        assert len(rows) == 2
+        confidences = {str(r["name"]): float(r["confidence"]) for r in rows}
+        assert confidences["python"] == pytest.approx(0.85)
+        assert confidences["testing"] == pytest.approx(0.6)
 
     @pytest.mark.asyncio
     async def test_batching_multiple_batches(self, db: aiosqlite.Connection) -> None:
@@ -359,3 +414,48 @@ class TestRunScoringPipeline:
             "SELECT relevance_score FROM articles WHERE id = ?", (art_id,)
         )
         assert float(rows[0]["relevance_score"]) == -1.0
+
+    @pytest.mark.asyncio
+    async def test_adjusted_score_stored(self, db: aiosqlite.Connection) -> None:
+        """Score adjustment from tag weights should be applied and raw_llm_score preserved."""
+        source_id = await _insert_source(db)
+        await _insert_article(db, source_id)
+
+        # Set up tag weights in user_profile
+        import json
+
+        await db.execute(
+            "UPDATE user_profile SET tag_weights_json = ? WHERE id = 1",
+            (json.dumps({"python": 3.0}),),
+        )
+        await db.commit()
+
+        p_client, p_db, p_close = _patch_pipeline(db)
+        with (
+            p_client as mock_client,
+            p_db,
+            p_close,
+            patch("backend.scoring.pipeline.score_batch", new_callable=AsyncMock) as mock_score,
+        ):
+            mock_client.return_value = MagicMock()
+            mock_score.return_value = ScoringBatchResult(
+                results=[
+                    _make_result(
+                        6.0,
+                        [TagScore(name="python", confidence=1.0)],
+                    )
+                ],
+                tokens_in=50,
+                tokens_out=100,
+            )
+
+            await run_scoring_pipeline()
+
+        rows = await db.execute_fetchall(
+            "SELECT relevance_score, raw_llm_score FROM articles"
+        )
+        raw = float(rows[0]["raw_llm_score"])
+        adjusted = float(rows[0]["relevance_score"])
+        assert raw == 6.0
+        # adjustment = 3.0 * 1.0 * 0.3 = 0.9
+        assert adjusted == pytest.approx(6.9)

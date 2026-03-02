@@ -27,7 +27,8 @@ For each article, provide:
 - relevance_score: float 0-10 (10 = extremely relevant/high-quality)
 - summary: 2-3 sentence summary capturing the key points of the article
 - explanation: brief reason for the score
-- tags: 2-5 lowercase English topic tags (always English, regardless of article or summary language)
+- tags: 2-5 topic tags as objects {"name": "lowercase-english-tag", "confidence": 0.0-1.0} \
+(always English regardless of article language; confidence = how strongly the tag applies)
 
 Return a JSON array with one result per article, in the same order as presented."""
 
@@ -117,11 +118,26 @@ def build_system_prompt(
         parts.append("")
 
     if tag_weights:
-        parts.append("**Topic weights** (higher = more relevant):")
-        sorted_tags = sorted(tag_weights.items(), key=lambda x: x[1], reverse=True)[:20]
-        for tag, weight in sorted_tags:
-            parts.append(f"- {tag}: {weight:.1f}")
-        parts.append("")
+        positive = sorted(
+            ((t, w) for t, w in tag_weights.items() if w > 0),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:15]
+        negative = sorted(
+            ((t, w) for t, w in tag_weights.items() if w < 0),
+            key=lambda x: abs(x[1]),
+            reverse=True,
+        )[:10]
+        if positive:
+            parts.append("**Strongly prefer** (higher = more relevant):")
+            for tag, weight in positive:
+                parts.append(f"- {tag}: {weight:+.1f}")
+            parts.append("")
+        if negative:
+            parts.append("**Seen enough / avoid** (more negative = less wanted):")
+            for tag, weight in negative:
+                parts.append(f"- {tag}: {weight:+.1f}")
+            parts.append("")
 
     instructions = """\
 ## Instructions
@@ -135,8 +151,8 @@ For each article, provide:
 - relevance_score: float 0-10 (10 = extremely relevant)
 - summary: 2-3 sentence summary capturing the key points of the article
 - explanation: brief reason for the score referencing the user's profile
-- tags: 2-5 lowercase English topic tags \
-(always English, regardless of article or summary language)"""
+- tags: 2-5 topic tags as objects {"name": "lowercase-english-tag", "confidence": 0.0-1.0} \
+(always English regardless of article language; confidence = how strongly the tag applies)"""
     if language_instruction:
         instructions += "\n" + language_instruction
     instructions += (

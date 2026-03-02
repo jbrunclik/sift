@@ -290,6 +290,50 @@ async def extract_unextracted_articles() -> None:
         await db.close()
 
 
+async def synthesize_profile() -> None:
+    """Run profile synthesis (decay weights + generate prose profile)."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO scheduler_runs (job_name, status) VALUES ('synthesize', 'running')"
+        )
+        run_id = cursor.lastrowid
+        await db.commit()
+    finally:
+        await db.close()
+
+    error_msg = None
+    status = "success"
+    details = "{}"
+    try:
+        from backend.preferences.profile_synthesizer import synthesize_profile as _synthesize
+
+        db = await get_db()
+        try:
+            did_run = await _synthesize(db)
+            details = json.dumps({"synthesized": did_run})
+        finally:
+            await db.close()
+    except Exception:
+        logger.exception("Profile synthesis failed")
+        status = "error"
+        error_msg = "Profile synthesis failed"
+
+    db = await get_db()
+    try:
+        await db.execute(
+            """
+            UPDATE scheduler_runs
+            SET finished_at = datetime('now'), status = ?, details = ?, error_message = ?
+            WHERE id = ?
+            """,
+            (status, details, error_msg, run_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
 def _normalize_url(url: str) -> str:
     """Normalize URL for deduplication."""
     from urllib.parse import parse_qs, urlencode, urlparse, urlunparse

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.database import get_db
+from backend.preferences.tag_quality import get_noisy_tags
 from backend.preferences.tag_vocabulary import (
     add_tag,
     get_candidates,
@@ -301,5 +302,37 @@ async def reject_candidate(tag_id: int) -> dict[str, str]:
         await db.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
         await db.commit()
         return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+# --- Tag Quality ---
+
+
+class TagQualityEntry(BaseModel):
+    tag_id: int
+    name: str
+    positive_votes: int
+    negative_votes: int
+    total_votes: int
+    disagreement_ratio: float
+
+
+@router.get("/vocabulary/quality")
+async def get_vocabulary_quality() -> list[TagQualityEntry]:
+    db = await get_db()
+    try:
+        noisy = await get_noisy_tags(db)
+        return [
+            TagQualityEntry(
+                tag_id=t.tag_id,
+                name=t.name,
+                positive_votes=t.positive_votes,
+                negative_votes=t.negative_votes,
+                total_votes=t.total_votes,
+                disagreement_ratio=t.disagreement_ratio,
+            )
+            for t in noisy
+        ]
     finally:
         await db.close()

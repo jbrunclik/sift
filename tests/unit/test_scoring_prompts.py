@@ -27,9 +27,10 @@ class TestBuildSystemPrompt:
 
         assert "I'm a backend engineer" in result
         assert "machine learning, systems programming" in result
-        assert "python: 8.5" in result
-        assert "rust: 7.0" in result
-        assert "javascript: 3.0" in result
+        assert "python" in result
+        assert "rust" in result
+        assert "javascript" in result
+        assert "Strongly prefer" in result
         assert "relevance_score" in result
 
     def test_prose_only_does_not_fall_back(self) -> None:
@@ -37,12 +38,23 @@ class TestBuildSystemPrompt:
         assert result != COLD_START_SYSTEM_PROMPT
         assert "I like tech news" in result
 
-    def test_tag_weights_limited_to_top_20(self) -> None:
+    def test_tag_weights_limited_to_top_15_positive(self) -> None:
         weights = {f"tag{i}": float(i) for i in range(25)}
         result = build_system_prompt("", json.dumps(weights), "[]")
-        # Should include tag24 (highest) but not tag0 (lowest)
+        # Should include tag24 (highest) but not tag0 (zero, excluded)
         assert "tag24" in result
+        assert "Strongly prefer" in result
+        # tag0 = 0.0 is not positive, so excluded
         assert "tag0" not in result
+
+    def test_negative_weights_in_seen_enough(self) -> None:
+        weights = {"python": 5.0, "sports": -2.0, "gossip": -1.0}
+        result = build_system_prompt("", json.dumps(weights), "[]")
+        assert "Strongly prefer" in result
+        assert "python" in result
+        assert "Seen enough" in result
+        assert "sports" in result
+        assert "gossip" in result
 
     def test_language_instruction_added_for_non_english(self) -> None:
         result = build_system_prompt("I like tech", "{}", "[]", summary_language="cs")
@@ -144,3 +156,12 @@ class TestBuildBatchPrompt:
         article = self._make_article(content="")
         result = build_batch_prompt([article])
         assert "(no content available)" in result
+
+
+class TestTagConfidenceInPrompts:
+    def test_cold_start_mentions_confidence(self) -> None:
+        assert "confidence" in COLD_START_SYSTEM_PROMPT
+
+    def test_personalized_prompt_mentions_confidence(self) -> None:
+        result = build_system_prompt("I like tech", "{}", "[]")
+        assert "confidence" in result

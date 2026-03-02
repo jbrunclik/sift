@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             extract_unextracted_articles,
             fetch_all_sources,
             score_unscored_articles,
+            synthesize_profile,
         )
 
         scheduler = AsyncScheduler()
@@ -62,11 +63,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             IntervalTrigger(hours=24),
             id="cleanup",
         )
+        await scheduler.add_schedule(
+            synthesize_profile,
+            IntervalTrigger(hours=settings.profile_synthesis_interval_hours),
+            id="synthesize_profile",
+        )
         await scheduler.start_in_background()
         logger.info(
-            "Scheduler started (fetch=30min, score=%dmin, extract=%dmin, cleanup=daily)",
+            "Scheduler started (fetch=30min, score=%dmin, extract=%dmin, "
+            "synthesis=%dh, cleanup=daily)",
             settings.scoring_interval_minutes,
             settings.extraction_interval_minutes,
+            settings.profile_synthesis_interval_hours,
         )
     except Exception:
         logger.exception("Scheduler failed to start — fetching will only work manually")
@@ -94,6 +102,7 @@ def create_app() -> FastAPI:
     from backend.api.routes_articles import router as articles_router
     from backend.api.routes_feedback import router as feedback_router
     from backend.api.routes_health import router as health_router
+    from backend.api.routes_onboarding import router as onboarding_router
     from backend.api.routes_preferences import router as preferences_router
     from backend.api.routes_sources import router as sources_router
 
@@ -101,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(sources_router)
     app.include_router(feedback_router)
     app.include_router(preferences_router)
+    app.include_router(onboarding_router)
     app.include_router(health_router)
 
     # Serve frontend static files if built

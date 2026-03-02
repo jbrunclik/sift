@@ -80,3 +80,35 @@ async def process_feedback(
         """,
         (json.dumps(new_weights), version + 1),
     )
+
+    # Update tag feedback stats
+    is_positive = rating == 1
+    for tag in tags:
+        tag_rows = list(
+            await db.execute_fetchall("SELECT id FROM tags WHERE name = ?", (tag.name,))
+        )
+        if not tag_rows:
+            continue
+        tag_id = int(tag_rows[0][0])
+        if is_positive:
+            await db.execute(
+                """
+                INSERT INTO tag_feedback_stats (tag_id, positive_votes, updated_at)
+                VALUES (?, 1, datetime('now'))
+                ON CONFLICT(tag_id) DO UPDATE SET
+                    positive_votes = positive_votes + 1,
+                    updated_at = datetime('now')
+                """,
+                (tag_id,),
+            )
+        else:
+            await db.execute(
+                """
+                INSERT INTO tag_feedback_stats (tag_id, negative_votes, updated_at)
+                VALUES (?, 1, datetime('now'))
+                ON CONFLICT(tag_id) DO UPDATE SET
+                    negative_votes = negative_votes + 1,
+                    updated_at = datetime('now')
+                """,
+                (tag_id,),
+            )

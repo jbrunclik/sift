@@ -4,7 +4,7 @@ import logging
 
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from backend.config import settings
 
@@ -15,11 +15,32 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.0  # seconds
 
 
+class TagScore(BaseModel):
+    name: str
+    confidence: float = 1.0
+
+
 class ScoringResult(BaseModel):
     relevance_score: float
     summary: str
     explanation: str
-    tags: list[str]
+    tags: list[TagScore]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_tags(cls, data: object) -> object:
+        """Handle Gemini returning flat strings instead of TagScore objects."""
+        if isinstance(data, dict) and "tags" in data:
+            raw_tags = data["tags"]
+            if isinstance(raw_tags, list):
+                coerced: list[object] = []
+                for item in raw_tags:
+                    if isinstance(item, str):
+                        coerced.append({"name": item, "confidence": 1.0})
+                    else:
+                        coerced.append(item)
+                data["tags"] = coerced
+        return data
 
 
 class BatchScoringResponse(BaseModel):
@@ -160,13 +181,15 @@ async def score_batch(
     # Normalize results (preserve '+' prefix for new-tag suggestions)
     for result in results:
         result.relevance_score = max(0.0, min(10.0, result.relevance_score))
-        normalized_tags: list[str] = []
-        for tag in result.tags:
-            stripped = tag.strip()
+        normalized_tags: list[TagScore] = []
+        for tag_score in result.tags:
+            stripped = tag_score.name.strip()
             if stripped.startswith("+"):
-                normalized_tags.append("+" + stripped[1:].lower().strip())
+                name = "+" + stripped[1:].lower().strip()
             else:
-                normalized_tags.append(stripped.lower())
+                name = stripped.lower()
+            confidence = max(0.0, min(1.0, tag_score.confidence))
+            normalized_tags.append(TagScore(name=name, confidence=confidence))
         result.tags = normalized_tags
 
     return ScoringBatchResult(results=results, tokens_in=tokens_in, tokens_out=tokens_out)

@@ -1,4 +1,7 @@
+from backend.preferences.decay import apply_decay
 from backend.preferences.feedback_processor import process_feedback
+from backend.preferences.profile_synthesizer import synthesize_profile
+from backend.preferences.tag_quality import get_noisy_tags
 from backend.preferences.tag_vocabulary import (
     add_tag,
     get_candidates,
@@ -26,8 +29,10 @@ __all__ = [
     "TagWithConfidence",
     "add_tag",
     "adjust_weights",
+    "apply_decay",
     "clamp",
     "get_candidates",
+    "get_noisy_tags",
     "get_vocabulary",
     "maybe_bootstrap_vocabulary",
     "merge_tags",
@@ -36,4 +41,5 @@ __all__ = [
     "record_candidate",
     "remove_tag",
     "resolve_tag",
+    "synthesize_profile",
 ]

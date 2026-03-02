@@ -84,10 +84,17 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [x] Cleanup: stale candidate pruning, preserve approved tags when orphaned
 - [x] Tests: 21 unit (tag_vocabulary), 4 prompt, 11 API integration — all passing
 
+### Feedback loop improvements [DONE]
+- [x] Tag confidences end-to-end: `TagScore` model, LLM prompt update, confidence stored in DB (ADR-020)
+- [x] Post-LLM score adjustment: deterministic weight-based adjustment, dual prompt sections (ADR-021)
+- [x] Borderline article rescoring on profile change (migration 011)
+- [x] Weight decay + profile synthesis every 6h (ADR-022)
+- [x] Cold-start onboarding endpoint `POST /api/onboarding`
+- [x] Tag quality instrumentation: feedback stats tracking, noisy tag detection (migration 012)
+
 ### Feedback loop [TODO — remaining]
-- [ ] `backend/preferences/cold_start.py` + cold-start wizard frontend
+- [x] Cold-start wizard frontend (onboarding modal when `profile_version == 0`)
 - [ ] `POST /api/articles/submit-url` for manually submitting missed links
-- [ ] Periodic prose profile synthesis from tag weights + feedback history
 
 ### Article content extraction [DONE]
 - [x] Fetch actual article content (not just RSS summaries) for better LLM scoring
@@ -144,11 +151,11 @@ Design decisions accepted (ADRs written). Implementation complete.
 - [ ] `backend/sources/hncz.py` (RSS/scrape)
 - [ ] `backend/sources/playwright_pool.py` (shared browser instance, if needed)
 
-## Phase 4: MCP Server + Preference Refinement [TODO]
+## Phase 4: MCP Server + Preference Refinement [IN PROGRESS]
 
 - [ ] `backend/mcp/server.py` (FastMCP with all tools + resources)
-- [ ] `backend/preferences/profile_synthesizer.py` (scheduled every 6h)
-- [ ] Preference decay, tag pruning, feedback-weighted rescoring
+- [x] `backend/preferences/profile_synthesizer.py` (scheduled every 6h)
+- [x] Preference decay, tag pruning, feedback-weighted rescoring
 - [x] Frontend: stats page with fetch logs, source health details (done in Phase 2.5)
 - [ ] MCP integration tests
 

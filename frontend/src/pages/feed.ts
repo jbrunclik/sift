@@ -1,5 +1,6 @@
 import { getSources, markRead, markUnread, sendFeedback } from "../api";
 import { ArticleList } from "../components/article-list";
+import { maybeShowOnboarding } from "../components/onboarding";
 import { SearchBar } from "../components/search-bar";
 import { showToast } from "../components/toast";
 import { el } from "../utils";
@@ -251,6 +252,9 @@ export function FeedPage(): HTMLElement {
   }
 
   document.addEventListener("keydown", handleKeyDown);
+
+  // Cold-start onboarding — show modal if profile_version == 0
+  maybeShowOnboarding();
 
   // Cleanup: remove global listeners when this page element is removed from the DOM
   const cleanupObserver = new MutationObserver(() => {

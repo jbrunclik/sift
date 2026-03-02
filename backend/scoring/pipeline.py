@@ -1,4 +1,6 @@
 import asyncio
+import contextlib
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -18,11 +20,13 @@ from backend.scoring.deduplicator import (
 )
 from backend.scoring.pricing import calculate_cost
 from backend.scoring.prompts import ArticlePromptData, build_batch_prompt, build_system_prompt
+from backend.scoring.score_adjustment import compute_adjustment
 from backend.scoring.scorer import (
     BATCH_SIZE,
     BatchTooLargeError,
     ScoringError,
     ScoringResult,
+    TagScore,
     create_gemini_client,
     score_batch,
 )
@@ -74,7 +78,7 @@ async def run_scoring_pipeline() -> dict[str, int]:
         logger.info("Deduplicated to %d unique articles", len(groups))
 
         # Fetch user profile for prompt building
-        system_prompt, vocabulary = await _build_system_prompt(db)
+        system_prompt, vocabulary, tag_weights = await _build_system_prompt(db)
 
         # Chunk groups into batches of BATCH_SIZE
         batches: list[list[DeduplicatedGroup]] = []
@@ -87,13 +91,18 @@ async def run_scoring_pipeline() -> dict[str, int]:
 
         async def _score_one_batch(batch: list[DeduplicatedGroup]) -> None:
             async with semaphore:
-                ok = await _process_batch(client, system_prompt, vocabulary, batch, db)
+                ok = await _process_batch(
+                    client, system_prompt, vocabulary, tag_weights, batch, db
+                )
                 if ok:
                     stats.scored += len(batch)
                 else:
                     stats.failed += len(batch)
 
         await asyncio.gather(*[_score_one_batch(batch) for batch in batches])
+
+        # Rescore borderline articles if profile has changed enough
+        await maybe_rescore_borderline(db, tag_weights)
 
         logger.info("Scoring pipeline complete")
         return stats.to_dict()
@@ -134,8 +143,13 @@ async def _fetch_unscored_articles(
     ]
 
 
-async def _build_system_prompt(db: aiosqlite.Connection) -> tuple[str, list[str]]:
-    """Build the system prompt from the user profile. Returns (prompt, vocabulary)."""
+async def _build_system_prompt(
+    db: aiosqlite.Connection,
+) -> tuple[str, list[str], dict[str, float]]:
+    """Build the system prompt from the user profile.
+
+    Returns (prompt, vocabulary, tag_weights).
+    """
     rows = list(
         await db.execute_fetchall(
             "SELECT prose_profile, tag_weights_json, interests_json, summary_language"
@@ -146,24 +160,29 @@ async def _build_system_prompt(db: aiosqlite.Connection) -> tuple[str, list[str]
     # Get approved vocabulary for tag constraint (bootstraps on cold start)
     vocabulary = await maybe_bootstrap_vocabulary(db)
 
+    tag_weights: dict[str, float] = {}
     if rows:
         row = rows[0]
+        tag_weights_json = str(row[1] or "{}")
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
+            tag_weights = json.loads(tag_weights_json) if tag_weights_json else {}
         prompt = build_system_prompt(
             prose_profile=str(row[0] or ""),
-            tag_weights_json=str(row[1] or "{}"),
+            tag_weights_json=tag_weights_json,
             interests_json=str(row[2] or "[]"),
             summary_language=str(row[3] or "en"),
             approved_tags=vocabulary,
         )
     else:
         prompt = build_system_prompt("", "{}", "[]", approved_tags=vocabulary)
-    return prompt, vocabulary
+    return prompt, vocabulary, tag_weights
 
 
 async def _process_batch(
     client: object,
     system_prompt: str,
     vocabulary: list[str],
+    tag_weights: dict[str, float],
     batch: list[DeduplicatedGroup],
     db: aiosqlite.Connection,
 ) -> bool:
@@ -198,7 +217,9 @@ async def _process_batch(
         )
         all_ok = True
         for group in batch:
-            ok = await _process_batch(client, system_prompt, vocabulary, [group], db)
+            ok = await _process_batch(
+                client, system_prompt, vocabulary, tag_weights, [group], db
+            )
             if not ok:
                 all_ok = False
         return all_ok
@@ -226,7 +247,7 @@ async def _process_batch(
     # Store results, mapping each result to all article IDs in the group
     now = datetime.now(UTC).isoformat()
     for group, result in zip(batch, batch_result.results, strict=True):
-        await _store_scoring_result(db, group, result, now, vocabulary)
+        await _store_scoring_result(db, group, result, now, vocabulary, tag_weights)
 
     await db.commit()
     return True
@@ -238,25 +259,31 @@ async def _store_scoring_result(
     result: ScoringResult,
     scored_at: str,
     vocabulary: list[str],
+    tag_weights: dict[str, float],
 ) -> None:
     """Store a scoring result for all articles in a deduplicated group."""
+    raw_score = result.relevance_score
+    adjustment = compute_adjustment(result.tags, tag_weights)
+    adjusted_score = max(0.0, min(10.0, raw_score + adjustment))
+
     for article_id in group.all_ids:
         await db.execute(
             """
             UPDATE articles
-            SET relevance_score = ?, score_explanation = ?, summary = ?, scored_at = ?,
+            SET relevance_score = ?, raw_llm_score = ?,
+                score_explanation = ?, summary = ?, scored_at = ?,
                 score_attempts = score_attempts + 1
             WHERE id = ?
             """,
-            (result.relevance_score, result.explanation, result.summary, scored_at, article_id),
+            (adjusted_score, raw_score, result.explanation, result.summary, scored_at, article_id),
         )
 
     # Store tags with vocabulary resolution
     primary_id = group.primary.id
-    for raw_tag in result.tags:
+    for tag_score in result.tags:
         # Strip '+' prefix (LLM suggestion for new tag)
-        is_suggestion = raw_tag.startswith("+")
-        tag_name = raw_tag.lstrip("+").lower().strip()
+        is_suggestion = tag_score.name.startswith("+")
+        tag_name = tag_score.name.lstrip("+").lower().strip()
         if not tag_name:
             continue
 
@@ -280,8 +307,11 @@ async def _store_scoring_result(
             tag_id = int(tag_rows[0][0])
             for article_id in group.all_ids:
                 await db.execute(
-                    "INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)",
-                    (article_id, tag_id),
+                    "INSERT INTO article_tags (article_id, tag_id, confidence)"
+                    " VALUES (?, ?, ?)"
+                    " ON CONFLICT(article_id, tag_id)"
+                    " DO UPDATE SET confidence = excluded.confidence",
+                    (article_id, tag_id, tag_score.confidence),
                 )
 
 
@@ -305,3 +335,79 @@ async def _mark_as_scored_with_no_result(
             (now, reason, article_id),
         )
     await db.commit()
+
+
+RESCORE_VERSION_DELTA = 5
+RESCORE_SCORE_MIN = 5.0
+RESCORE_SCORE_MAX = 8.0
+RESCORE_RECENCY_HOURS = 24
+
+
+async def maybe_rescore_borderline(
+    db: aiosqlite.Connection, tag_weights: dict[str, float]
+) -> int:
+    """Re-compute adjusted scores for borderline articles when profile has changed enough.
+
+    Only rescores unread articles published in the last RESCORE_RECENCY_HOURS.
+    Returns the number of articles rescored.
+    """
+    rows = list(
+        await db.execute_fetchall(
+            "SELECT profile_version, last_rescore_version FROM user_profile WHERE id = 1"
+        )
+    )
+    if not rows:
+        return 0
+    profile_version = int(rows[0][0])
+    last_rescore_version = int(rows[0][1])
+
+    if profile_version - last_rescore_version < RESCORE_VERSION_DELTA:
+        return 0
+
+    # Find unread borderline articles published recently
+    article_rows = await db.execute_fetchall(
+        """
+        SELECT a.id, a.raw_llm_score
+        FROM articles a
+        WHERE a.raw_llm_score IS NOT NULL
+          AND a.raw_llm_score BETWEEN ? AND ?
+          AND a.is_read = 0
+          AND a.published_at >= datetime('now', ?)
+        """,
+        (RESCORE_SCORE_MIN, RESCORE_SCORE_MAX, f"-{RESCORE_RECENCY_HOURS} hours"),
+    )
+
+    count = 0
+    for row in article_rows:
+        article_id = int(row[0])
+        raw_score = float(row[1])
+
+        # Get article tags
+        tag_rows = await db.execute_fetchall(
+            """
+            SELECT t.name, at.confidence
+            FROM article_tags at
+            JOIN tags t ON at.tag_id = t.id
+            WHERE at.article_id = ?
+            """,
+            (article_id,),
+        )
+        tags = [TagScore(name=str(r[0]), confidence=float(r[1])) for r in tag_rows]
+        adjustment = compute_adjustment(tags, tag_weights)
+        new_score = max(0.0, min(10.0, raw_score + adjustment))
+
+        await db.execute(
+            "UPDATE articles SET relevance_score = ? WHERE id = ?",
+            (new_score, article_id),
+        )
+        count += 1
+
+    await db.execute(
+        "UPDATE user_profile SET last_rescore_version = ? WHERE id = 1",
+        (profile_version,),
+    )
+    await db.commit()
+
+    if count > 0:
+        logger.info("Rescored %d borderline articles (version %d)", count, profile_version)
+    return count

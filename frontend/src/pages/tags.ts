@@ -1,6 +1,7 @@
 import {
   addVocabularyTag,
   approveCandidate,
+  getTagQuality,
   getTagWeights,
   getVocabulary,
   getVocabularyCandidates,
@@ -9,7 +10,7 @@ import {
   removeVocabularyTag,
   resetTagWeight,
 } from "../api";
-import type { CandidateTag, TagWeight, VocabularyTag } from "../types";
+import type { CandidateTag, TagQualityEntry, TagWeight, VocabularyTag } from "../types";
 import { el } from "../utils";
 import { showToast } from "../components/toast";
 
@@ -32,20 +33,26 @@ export function TagsPage(): HTMLElement {
 }
 
 function load(container: HTMLElement): void {
-  Promise.all([getVocabulary(), getVocabularyCandidates(), getTagWeights()]).then(
-    ([vocab, candidates, weights]) => {
-      container.innerHTML = "";
-      container.appendChild(renderIntro());
-      if (candidates.length > 0) {
-        container.appendChild(renderCandidates(candidates, container));
-      }
-      container.appendChild(renderVocabulary(vocab, container));
-      if (vocab.length >= 2) {
-        container.appendChild(renderMerge(vocab, container));
-      }
-      container.appendChild(renderTagWeights(weights, container));
+  Promise.all([
+    getVocabulary(),
+    getVocabularyCandidates(),
+    getTagWeights(),
+    getTagQuality(),
+  ]).then(([vocab, candidates, weights, quality]) => {
+    container.innerHTML = "";
+    container.appendChild(renderIntro());
+    if (candidates.length > 0) {
+      container.appendChild(renderCandidates(candidates, container));
     }
-  );
+    container.appendChild(renderVocabulary(vocab, container));
+    if (vocab.length >= 2) {
+      container.appendChild(renderMerge(vocab, container));
+    }
+    container.appendChild(renderTagWeights(weights, container));
+    if (quality.length > 0) {
+      container.appendChild(renderTagQuality(quality));
+    }
+  });
 }
 
 function renderIntro(): HTMLElement {
@@ -370,5 +377,67 @@ function renderTagWeights(
     section.appendChild(toggleBtn);
   }
 
+  return section;
+}
+
+const ICON_WARNING = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
+
+function renderTagQuality(quality: TagQualityEntry[]): HTMLElement {
+  const section = el("div", { class: "prefs-section" });
+  const h2 = el("h2", {}, "Tag Quality ");
+  h2.appendChild(
+    el("span", { class: "section-count" }, String(quality.length))
+  );
+  section.appendChild(h2);
+  section.appendChild(
+    el(
+      "p",
+      { class: "prefs-hint" },
+      "Tags with mixed feedback signals. High disagreement means "
+        + "the tag correlates with both liked and disliked articles "
+        + "- it may be too broad or ambiguous."
+    )
+  );
+
+  const table = el("div", { class: "tag-quality-table" });
+
+  // Header
+  const header = el("div", { class: "tag-quality-row tag-quality-header" });
+  header.appendChild(el("span", { class: "tag-quality-name" }, "Tag"));
+  header.appendChild(el("span", { class: "tag-quality-votes" }, "Votes"));
+  header.appendChild(el("span", { class: "tag-quality-ratio" }, "Disagreement"));
+  table.appendChild(header);
+
+  for (const entry of quality) {
+    const row = el("div", { class: "tag-quality-row" });
+
+    const nameCell = el("span", { class: "tag-quality-name" });
+    nameCell.innerHTML = `${ICON_WARNING} ${entry.name}`;
+    row.appendChild(nameCell);
+
+    const votesCell = el("span", { class: "tag-quality-votes" });
+    votesCell.appendChild(
+      el("span", { class: "tag-quality-pos" }, `+${entry.positive_votes}`)
+    );
+    votesCell.appendChild(document.createTextNode(" / "));
+    votesCell.appendChild(
+      el("span", { class: "tag-quality-neg" }, `-${entry.negative_votes}`)
+    );
+    row.appendChild(votesCell);
+
+    const pct = Math.round(entry.disagreement_ratio * 100);
+    const ratioCell = el("span", { class: "tag-quality-ratio" });
+    const bar = el("div", { class: "tag-quality-bar" });
+    const fill = el("div", { class: "tag-quality-bar-fill" });
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+    ratioCell.appendChild(bar);
+    ratioCell.appendChild(el("span", {}, `${pct}%`));
+    row.appendChild(ratioCell);
+
+    table.appendChild(row);
+  }
+
+  section.appendChild(table);
   return section;
 }
