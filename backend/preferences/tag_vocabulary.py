@@ -25,6 +25,36 @@ async def get_vocabulary(db: aiosqlite.Connection) -> list[str]:
     return [str(row[0]) for row in rows]
 
 
+async def maybe_bootstrap_vocabulary(db: aiosqlite.Connection) -> list[str]:
+    """Return vocabulary, bootstrapping from article_tags if empty.
+
+    On cold start, migration 007's one-shot bootstrap may have run before any
+    articles were scored, leaving zero approved tags permanently. This re-runs
+    the same promotion logic: approve any tag with >= AUTO_PROMOTE_COUNT distinct
+    articles. Once vocabulary exists, this is a single cheap SELECT.
+    """
+    vocab = await get_vocabulary(db)
+    if vocab:
+        return vocab
+
+    cursor = await db.execute(
+        """
+        UPDATE tags SET is_approved = 1
+        WHERE id IN (
+            SELECT tag_id FROM article_tags
+            GROUP BY tag_id HAVING COUNT(DISTINCT article_id) >= ?
+        )
+        """,
+        (AUTO_PROMOTE_COUNT,),
+    )
+    if cursor.rowcount:
+        await db.commit()
+        logger.info("Bootstrap promoted %d tags to vocabulary", cursor.rowcount)
+        return await get_vocabulary(db)
+
+    return []
+
+
 def resolve_tag(tag: str, vocabulary: list[str]) -> tuple[str, bool]:
     """Resolve a tag against the vocabulary.
 

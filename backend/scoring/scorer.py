@@ -40,7 +40,7 @@ class ScoringError(Exception):
 
 
 class BatchTooLargeError(ScoringError):
-    """Raised when Gemini response is truncated (MAX_TOKENS), signaling the batch should be split."""
+    """Raised when Gemini response is truncated (MAX_TOKENS), signaling split."""
 
     pass
 

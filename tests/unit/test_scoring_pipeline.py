@@ -319,7 +319,7 @@ class TestRunScoringPipeline:
             patch("backend.scoring.pipeline.score_batch", side_effect=mock_score),
         ):
             mock_client.return_value = MagicMock()
-            stats = await run_scoring_pipeline()
+            await run_scoring_pipeline()
 
         # 1 batch call (fails) + 2 individual retries = 3 calls
         assert call_count == 3

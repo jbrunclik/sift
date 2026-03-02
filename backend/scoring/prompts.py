@@ -49,11 +49,15 @@ def _build_vocabulary_instruction(approved_tags: list[str]) -> str:
     tag_list = ", ".join(approved_tags)
     return (
         f"## Tag Vocabulary\n"
-        f"Assign tags ONLY from this list: {tag_list}\n\n"
-        f"If an article covers a topic not in this vocabulary, you may suggest ONE new tag "
-        f'by prefixing it with "+": e.g. "+quantum-computing". '
-        f"New tags must be in English and be durable topics "
-        f"(not event names, years, or ephemeral terms)."
+        f"Preferred tags: {tag_list}\n\n"
+        f"Use these when they genuinely fit. Do NOT force-fit — accuracy matters more "
+        f"than consistency. If an article's core topic is not well-served by any vocabulary "
+        f'tag, suggest a new one with "+" prefix: e.g. "+quantum-computing".\n\n'
+        f"Actively look for vocabulary gaps: if you see a recurring topic with no good match, "
+        f"suggest it even if a loosely related tag exists.\n\n"
+        f"New tag rules:\n"
+        f"- Durable English topics, not event names, years, or ephemeral terms\n"
+        f"- At most 2 new suggestions per article"
     )
 
 
@@ -123,7 +127,8 @@ def build_system_prompt(
 ## Instructions
 
 For each article:
-1. Identify 2-5 topic tags based on article content (use vocabulary above)
+1. Identify 2-5 topic tags based on article content \
+(prefer vocabulary above, suggest new with "+" when gaps exist)
 2. Score relevance (0-10) considering user preferences above
 
 For each article, provide:

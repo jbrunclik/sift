@@ -62,17 +62,18 @@ class TestBuildSystemPrompt:
             "I like tech", "{}", "[]", approved_tags=["ai", "python", "rust"]
         )
         assert "ai, python, rust" in result
-        assert "Assign tags ONLY from this list" in result
+        assert "Preferred tags:" in result
+        assert "Do NOT force-fit" in result
         assert '"+' in result  # escape hatch instruction
 
     def test_approved_tags_in_cold_start(self) -> None:
         result = build_system_prompt("", "{}", "[]", approved_tags=["python", "rust"])
         assert "python, rust" in result
-        assert "Assign tags ONLY" in result
+        assert "Preferred tags:" in result
 
     def test_no_vocabulary_when_empty_tags(self) -> None:
         result = build_system_prompt("I like tech", "{}", "[]", approved_tags=[])
-        assert "Assign tags ONLY" not in result
+        assert "Preferred tags:" not in result
 
     def test_vocabulary_before_user_profile(self) -> None:
         result = build_system_prompt(

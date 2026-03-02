@@ -8,6 +8,7 @@ from backend.preferences.tag_vocabulary import (
     add_tag,
     get_candidates,
     get_vocabulary,
+    maybe_bootstrap_vocabulary,
     merge_tags,
     record_candidate,
     remove_tag,
@@ -80,6 +81,71 @@ async def _setup_source_and_article(
     article_id = cursor.lastrowid
     await db.commit()
     return source_id, article_id  # type: ignore[return-value]
+
+
+class TestMaybeBootstrapVocabulary:
+    @pytest.mark.asyncio
+    async def test_returns_existing_vocabulary(self, db: aiosqlite.Connection) -> None:
+        await db.execute("INSERT INTO tags (name, is_approved) VALUES ('python', 1)")
+        await db.commit()
+
+        vocab = await maybe_bootstrap_vocabulary(db)
+        assert vocab == ["python"]
+
+    @pytest.mark.asyncio
+    async def test_promotes_tags_at_threshold(self, db: aiosqlite.Connection) -> None:
+        source_id, _ = await _setup_source_and_article(db)
+
+        # Create a tag (unapproved)
+        await db.execute("INSERT INTO tags (name, is_approved) VALUES ('popular', 0)")
+        tag_rows = await db.execute_fetchall("SELECT id FROM tags WHERE name = 'popular'")
+        tag_id = int(tag_rows[0][0])
+
+        # Link it to AUTO_PROMOTE_COUNT distinct articles
+        for i in range(AUTO_PROMOTE_COUNT):
+            cursor = await db.execute(
+                "INSERT INTO articles (source_id, url, url_normalized, title)"
+                f" VALUES (?, 'https://b.com/{i}', 'https://b.com/{i}', 'B {i}')",
+                (source_id,),
+            )
+            await db.execute(
+                "INSERT INTO article_tags (article_id, tag_id) VALUES (?, ?)",
+                (cursor.lastrowid, tag_id),
+            )
+        await db.commit()
+
+        vocab = await maybe_bootstrap_vocabulary(db)
+        assert "popular" in vocab
+
+    @pytest.mark.asyncio
+    async def test_ignores_tags_below_threshold(
+        self, db: aiosqlite.Connection
+    ) -> None:
+        source_id, _ = await _setup_source_and_article(db)
+
+        await db.execute("INSERT INTO tags (name, is_approved) VALUES ('rare', 0)")
+        tag_rows = await db.execute_fetchall("SELECT id FROM tags WHERE name = 'rare'")
+        tag_id = int(tag_rows[0][0])
+
+        # Link to only 1 article (below threshold)
+        cursor = await db.execute(
+            "INSERT INTO articles (source_id, url, url_normalized, title)"
+            " VALUES (?, 'https://c.com/1', 'https://c.com/1', 'C 1')",
+            (source_id,),
+        )
+        await db.execute(
+            "INSERT INTO article_tags (article_id, tag_id) VALUES (?, ?)",
+            (cursor.lastrowid, tag_id),
+        )
+        await db.commit()
+
+        vocab = await maybe_bootstrap_vocabulary(db)
+        assert vocab == []
+
+    @pytest.mark.asyncio
+    async def test_empty_db_returns_empty(self, db: aiosqlite.Connection) -> None:
+        vocab = await maybe_bootstrap_vocabulary(db)
+        assert vocab == []
 
 
 class TestGetVocabulary:

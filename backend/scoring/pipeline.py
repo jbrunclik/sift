@@ -6,7 +6,11 @@ import aiosqlite
 
 from backend.config import settings
 from backend.database import get_db
-from backend.preferences.tag_vocabulary import get_vocabulary, record_candidate, resolve_tag
+from backend.preferences.tag_vocabulary import (
+    maybe_bootstrap_vocabulary,
+    record_candidate,
+    resolve_tag,
+)
 from backend.scoring.deduplicator import (
     ArticleForScoring,
     DeduplicatedGroup,
@@ -139,8 +143,8 @@ async def _build_system_prompt(db: aiosqlite.Connection) -> tuple[str, list[str]
         )
     )
 
-    # Get approved vocabulary for tag constraint
-    vocabulary = await get_vocabulary(db)
+    # Get approved vocabulary for tag constraint (bootstraps on cold start)
+    vocabulary = await maybe_bootstrap_vocabulary(db)
 
     if rows:
         row = rows[0]
