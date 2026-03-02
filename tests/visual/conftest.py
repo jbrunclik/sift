@@ -1,7 +1,8 @@
 """Playwright visual test fixtures.
 
-These tests require both backend and frontend dev servers running:
-  make dev  (starts backend on :8000 and frontend on :5173)
+These tests mock all API responses at the browser level, so only the Vite
+frontend dev server is needed (no backend):
+  cd frontend && npm run dev   (starts on :5173)
 
 Run with: uv run pytest tests/visual/ --headed (for visible browser)
 """
@@ -11,6 +12,8 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 from playwright.async_api import Page, async_playwright
+
+from tests.visual.mock_data import MockState, install_mock_routes
 
 
 @pytest.fixture(scope="session")
@@ -27,3 +30,15 @@ async def page(base_url: str) -> AsyncIterator[Page]:
         page = await ctx.new_page()
         yield page
         await browser.close()
+
+
+@pytest_asyncio.fixture
+async def mock_api(page: Page) -> MockState:
+    """Install mock API routes (profile_version=1, normal state)."""
+    return await install_mock_routes(page)
+
+
+@pytest_asyncio.fixture
+async def mock_api_cold_start(page: Page) -> MockState:
+    """Install mock API routes with cold-start preferences (profile_version=0)."""
+    return await install_mock_routes(page, cold_start=True)

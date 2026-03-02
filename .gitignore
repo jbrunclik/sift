@@ -44,3 +44,6 @@ htmlcov/
 test-results/
 playwright-report/
 tests/visual/screenshots/actual/
+
+# Visual test screenshots (generated, may contain personal data)
+tests/visual/screenshots/*.png

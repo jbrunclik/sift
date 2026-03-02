@@ -1,7 +1,7 @@
 """Visual regression tests for Sift.
 
-Run with the dev servers active:
-  make dev
+Run with only the Vite frontend dev server active:
+  cd frontend && npm run dev
   uv run pytest tests/visual/ -v
 
 For visible browser:
@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 from playwright.async_api import Page
 
+from tests.visual.mock_data import MockState
+
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 SCREENSHOT_DIR.mkdir(exist_ok=True)
 
@@ -21,37 +23,34 @@ SCREENSHOT_DIR.mkdir(exist_ok=True)
 
 
 @pytest.mark.asyncio
-async def test_feed_page_loads(page: Page, base_url: str) -> None:
-    """Feed page renders with nav bar, toolbar, and article cards or empty state."""
+async def test_feed_page_loads(page: Page, base_url: str, mock_api: MockState) -> None:
+    """Feed page renders with nav bar, toolbar, and article cards."""
     await page.goto(f"{base_url}/#/feed")
     await page.wait_for_selector(".nav-bar")
     await page.wait_for_selector(".feed-toolbar")
-    await page.wait_for_selector(".article-card, .empty-state", timeout=5000)
+    await page.wait_for_selector(".article-card", timeout=5000)
     await page.screenshot(path=str(SCREENSHOT_DIR / "feed.png"), full_page=True)
 
 
 @pytest.mark.asyncio
-async def test_feed_training_mode(page: Page, base_url: str) -> None:
+async def test_feed_training_mode(page: Page, base_url: str, mock_api: MockState) -> None:
     """Training mode toggle activates and shows all-score articles."""
     await page.goto(f"{base_url}/#/feed")
     await page.wait_for_selector(".btn-training")
     await page.click(".btn-training")
     btn = page.locator(".btn-training")
     assert "active" in (await btn.get_attribute("class") or "")
-    await page.wait_for_selector(".article-card, .empty-state", timeout=5000)
+    await page.wait_for_selector(".article-card", timeout=5000)
     await page.screenshot(path=str(SCREENSHOT_DIR / "feed-training.png"), full_page=True)
     await page.click(".btn-training")
 
 
 @pytest.mark.asyncio
-async def test_feed_article_card_hover(page: Page, base_url: str) -> None:
+async def test_feed_article_card_hover(page: Page, base_url: str, mock_api: MockState) -> None:
     """Article card shows action buttons on hover."""
     await page.goto(f"{base_url}/#/feed")
     card = page.locator(".article-card").first
-    try:
-        await card.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No articles in feed to test hover")
+    await card.wait_for(timeout=5000)
     await card.hover()
     actions = card.locator(".card-actions")
     await actions.wait_for(state="visible", timeout=2000)
@@ -59,14 +58,11 @@ async def test_feed_article_card_hover(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_feed_card_action_order(page: Page, base_url: str) -> None:
+async def test_feed_card_action_order(page: Page, base_url: str, mock_api: MockState) -> None:
     """Card actions: up, read-toggle, down, spacer, then secondary."""
     await page.goto(f"{base_url}/#/feed")
     card = page.locator(".article-card").first
-    try:
-        await card.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No articles in feed")
+    await card.wait_for(timeout=5000)
     await card.hover()
     actions = card.locator(".card-actions")
     buttons = actions.locator("button.btn-feedback")
@@ -82,14 +78,11 @@ async def test_feed_card_action_order(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_feed_card_actions_always_subtly_visible(page: Page, base_url: str) -> None:
+async def test_feed_card_actions_always_subtly_visible(page: Page, base_url: str, mock_api: MockState) -> None:
     """Card actions are subtly visible (opacity > 0) even without hover."""
     await page.goto(f"{base_url}/#/feed")
     card = page.locator(".article-card").first
-    try:
-        await card.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No articles in feed")
+    await card.wait_for(timeout=5000)
     # Without hover, actions should have opacity > 0 (subtly visible)
     actions = card.locator(".card-actions")
     opacity = await actions.evaluate("el => getComputedStyle(el).opacity")
@@ -98,13 +91,10 @@ async def test_feed_card_actions_always_subtly_visible(page: Page, base_url: str
 
 
 @pytest.mark.asyncio
-async def test_feed_keyboard_navigation(page: Page, base_url: str) -> None:
+async def test_feed_keyboard_navigation(page: Page, base_url: str, mock_api: MockState) -> None:
     """j/k keyboard shortcuts navigate between cards."""
     await page.goto(f"{base_url}/#/feed")
-    await page.wait_for_selector(".article-card, .empty-state", timeout=5000)
-    cards = page.locator(".article-card")
-    if await cards.count() < 1:
-        pytest.skip("No articles in feed for keyboard nav")
+    await page.wait_for_selector(".article-card", timeout=5000)
     await page.keyboard.press("j")
     focused = page.locator(".article-card.focused")
     await focused.wait_for(timeout=2000)
@@ -112,7 +102,7 @@ async def test_feed_keyboard_navigation(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_feed_search(page: Page, base_url: str) -> None:
+async def test_feed_search(page: Page, base_url: str, mock_api: MockState) -> None:
     """Search input filters the feed."""
     await page.goto(f"{base_url}/#/feed")
     await page.wait_for_selector(".search-input")
@@ -122,7 +112,7 @@ async def test_feed_search(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_feed_source_filter(page: Page, base_url: str) -> None:
+async def test_feed_source_filter(page: Page, base_url: str, mock_api: MockState) -> None:
     """Source filter dropdown is rendered."""
     await page.goto(f"{base_url}/#/feed")
     select = page.locator(".filter-source")
@@ -134,7 +124,7 @@ async def test_feed_source_filter(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_keyboard_help_overlay(page: Page, base_url: str) -> None:
+async def test_keyboard_help_overlay(page: Page, base_url: str, mock_api: MockState) -> None:
     """? key opens the help overlay with all shortcuts."""
     await page.goto(f"{base_url}/#/feed")
     await page.wait_for_selector(".feed-toolbar")
@@ -152,7 +142,7 @@ async def test_keyboard_help_overlay(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_stats_page_overview(page: Page, base_url: str) -> None:
+async def test_stats_page_overview(page: Page, base_url: str, mock_api: MockState) -> None:
     """Stats page renders overview cards and all sections."""
     await page.goto(f"{base_url}/#/stats")
     await page.wait_for_selector(".stats-section")
@@ -162,19 +152,16 @@ async def test_stats_page_overview(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_stats_score_distribution(page: Page, base_url: str) -> None:
+async def test_stats_score_distribution(page: Page, base_url: str, mock_api: MockState) -> None:
     """Stats page shows the SVG score distribution chart."""
     await page.goto(f"{base_url}/#/stats")
     chart = page.locator(".score-chart")
-    try:
-        await chart.wait_for(timeout=5000)
-        await chart.screenshot(path=str(SCREENSHOT_DIR / "stats-score-chart.png"))
-    except Exception:
-        await page.screenshot(path=str(SCREENSHOT_DIR / "stats-no-chart.png"), full_page=True)
+    await chart.wait_for(timeout=5000)
+    await chart.screenshot(path=str(SCREENSHOT_DIR / "stats-score-chart.png"))
 
 
 @pytest.mark.asyncio
-async def test_stats_job_table_with_run_buttons(page: Page, base_url: str) -> None:
+async def test_stats_job_table_with_run_buttons(page: Page, base_url: str, mock_api: MockState) -> None:
     """Stats page shows background jobs table with Run buttons in each row."""
     await page.goto(f"{base_url}/#/stats")
     await page.wait_for_selector(".stats-section", timeout=5000)
@@ -188,64 +175,56 @@ async def test_stats_job_table_with_run_buttons(page: Page, base_url: str) -> No
 
 
 @pytest.mark.asyncio
-async def test_stats_issues_banner(page: Page, base_url: str) -> None:
-    """Stats page shows issues banner when errors exist (or no banner when healthy)."""
+async def test_stats_issues_banner(page: Page, base_url: str, mock_api: MockState) -> None:
+    """Stats page shows issues banner when errors exist."""
     await page.goto(f"{base_url}/#/stats")
     await page.wait_for_selector(".stats-section", timeout=5000)
     banner = page.locator(".issues-banner")
-    if await banner.count() > 0:
-        await banner.screenshot(path=str(SCREENSHOT_DIR / "stats-issues-banner.png"))
-    else:
-        # No issues — verify no banner exists (healthy state)
-        await page.screenshot(path=str(SCREENSHOT_DIR / "stats-healthy.png"), full_page=True)
+    await banner.wait_for(timeout=3000)
+    await banner.screenshot(path=str(SCREENSHOT_DIR / "stats-issues-banner.png"))
 
 
 @pytest.mark.asyncio
-async def test_stats_scoring_failures_table(page: Page, base_url: str) -> None:
-    """Stats page shows detailed scoring failures table when failures exist."""
+async def test_stats_scoring_failures_table(page: Page, base_url: str, mock_api: MockState) -> None:
+    """Stats page shows detailed scoring failures table."""
     await page.goto(f"{base_url}/#/stats")
     await page.wait_for_selector(".stats-section", timeout=5000)
-    failures_table = page.locator(".issues-table")
-    if await failures_table.count() > 0:
-        # Should have article title, source, attempts, error columns
-        headers = failures_table.locator("th")
-        assert await headers.count() >= 4
-        rows = failures_table.locator("tbody tr")
-        assert await rows.count() >= 1
-        # Take a screenshot of just the issues section
-        issues_section = page.locator(".issues-section")
-        await issues_section.screenshot(path=str(SCREENSHOT_DIR / "stats-scoring-failures.png"))
-    else:
-        pytest.skip("No scoring failures to display")
+    failures_table = page.locator(".issues-table").first
+    await failures_table.wait_for(timeout=5000)
+    # Should have article title, source, attempts, error columns
+    headers = failures_table.locator("th")
+    assert await headers.count() >= 4
+    rows = failures_table.locator("tbody tr")
+    assert await rows.count() >= 1
+    # Take a screenshot of just the issues section
+    issues_section = page.locator(".issues-section")
+    await issues_section.screenshot(path=str(SCREENSHOT_DIR / "stats-scoring-failures.png"))
 
 
 @pytest.mark.asyncio
-async def test_stats_source_health_table(page: Page, base_url: str) -> None:
+async def test_stats_source_health_table(page: Page, base_url: str, mock_api: MockState) -> None:
     """Stats page shows source health table."""
     await page.goto(f"{base_url}/#/stats")
     await page.wait_for_selector(".stats-section")
     tables = page.locator(".stats-table")
-    if await tables.count() > 0:
-        await tables.first.screenshot(path=str(SCREENSHOT_DIR / "stats-source-health.png"))
+    await tables.first.wait_for(timeout=5000)
+    await tables.first.screenshot(path=str(SCREENSHOT_DIR / "stats-source-health.png"))
 
 
 @pytest.mark.asyncio
-async def test_stats_tag_cloud(page: Page, base_url: str) -> None:
+async def test_stats_tag_cloud(page: Page, base_url: str, mock_api: MockState) -> None:
     """Stats page renders the tag cloud."""
     await page.goto(f"{base_url}/#/stats")
     cloud = page.locator(".tag-cloud")
-    try:
-        await cloud.wait_for(timeout=5000)
-        await cloud.screenshot(path=str(SCREENSHOT_DIR / "stats-tag-cloud.png"))
-    except Exception:
-        pytest.skip("No tags yet for tag cloud")
+    await cloud.wait_for(timeout=5000)
+    await cloud.screenshot(path=str(SCREENSHOT_DIR / "stats-tag-cloud.png"))
 
 
 # ── Preferences page ──────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_preferences_page_sections(page: Page, base_url: str) -> None:
+async def test_preferences_page_sections(page: Page, base_url: str, mock_api: MockState) -> None:
     """Preferences page renders sections: language, profile, interests."""
     await page.goto(f"{base_url}/#/preferences")
     sections = page.locator(".prefs-section")
@@ -256,7 +235,7 @@ async def test_preferences_page_sections(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preferences_language_pills_with_flags(page: Page, base_url: str) -> None:
+async def test_preferences_language_pills_with_flags(page: Page, base_url: str, mock_api: MockState) -> None:
     """Language pills show flag emojis and one is active."""
     await page.goto(f"{base_url}/#/preferences")
     pills = page.locator(".language-pills .btn-pill")
@@ -269,7 +248,7 @@ async def test_preferences_language_pills_with_flags(page: Page, base_url: str) 
 
 
 @pytest.mark.asyncio
-async def test_preferences_save_buttons_have_icons(page: Page, base_url: str) -> None:
+async def test_preferences_save_buttons_have_icons(page: Page, base_url: str, mock_api: MockState) -> None:
     """Save buttons on preferences page have SVG icons."""
     await page.goto(f"{base_url}/#/preferences")
     save_btns = page.locator(".btn-icon-text")
@@ -287,7 +266,7 @@ async def test_preferences_save_buttons_have_icons(page: Page, base_url: str) ->
 
 
 @pytest.mark.asyncio
-async def test_tags_page_loads(page: Page, base_url: str) -> None:
+async def test_tags_page_loads(page: Page, base_url: str, mock_api: MockState) -> None:
     """Tags page renders with vocabulary section and add input."""
     await page.goto(f"{base_url}/#/tags")
     await page.wait_for_selector(".prefs-section", timeout=5000)
@@ -301,7 +280,7 @@ async def test_tags_page_loads(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tags_add_row_alignment(page: Page, base_url: str) -> None:
+async def test_tags_add_row_alignment(page: Page, base_url: str, mock_api: MockState) -> None:
     """Add tag input and button should have matching heights."""
     await page.goto(f"{base_url}/#/tags")
     add_row = page.locator(".vocab-add-row")
@@ -320,65 +299,56 @@ async def test_tags_add_row_alignment(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tags_vocabulary_pills(page: Page, base_url: str) -> None:
+async def test_tags_vocabulary_pills(page: Page, base_url: str, mock_api: MockState) -> None:
     """Tags page shows approved tags as pill chips with remove buttons."""
     await page.goto(f"{base_url}/#/tags")
     pills = page.locator(".vocab-pill")
-    try:
-        await pills.first.wait_for(timeout=3000)
-        count = await pills.count()
-        assert count >= 1
-        remove_btns = page.locator(".vocab-pill-x")
-        assert await remove_btns.count() >= 1
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "tags-vocabulary-pills.png"), full_page=True
-        )
-    except Exception:
-        pytest.skip("No approved tags in vocabulary")
+    await pills.first.wait_for(timeout=5000)
+    count = await pills.count()
+    assert count >= 1
+    remove_btns = page.locator(".vocab-pill-x")
+    assert await remove_btns.count() >= 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-vocabulary-pills.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
-async def test_tags_merge_section(page: Page, base_url: str) -> None:
+async def test_tags_merge_section(page: Page, base_url: str, mock_api: MockState) -> None:
     """Tags page shows merge section with source/target dropdowns."""
     await page.goto(f"{base_url}/#/tags")
     merge = page.locator(".vocab-merge-row")
-    try:
-        await merge.wait_for(timeout=3000)
-        selects = merge.locator("select")
-        assert await selects.count() == 2
-        merge_btn = merge.locator("button")
-        assert await merge_btn.count() >= 1
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "tags-merge.png"), full_page=True
-        )
-    except Exception:
-        pytest.skip("No merge UI (need >= 2 approved tags)")
+    await merge.wait_for(timeout=5000)
+    selects = merge.locator("select")
+    assert await selects.count() == 2
+    merge_btn = merge.locator("button")
+    assert await merge_btn.count() >= 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-merge.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
-async def test_tags_candidates_section(page: Page, base_url: str) -> None:
+async def test_tags_candidates_section(page: Page, base_url: str, mock_api: MockState) -> None:
     """Tags page shows candidates with approve/reject buttons and article count pills."""
     await page.goto(f"{base_url}/#/tags")
     candidates = page.locator(".vocab-candidate-row")
-    try:
-        await candidates.first.wait_for(timeout=3000)
-        assert await candidates.count() >= 1
-        approve = page.locator(".btn-approve")
-        reject = page.locator(".btn-reject")
-        assert await approve.count() >= 1
-        assert await reject.count() >= 1
-        # Each candidate should have an article count pill
-        count_pills = page.locator(".vocab-candidate-row .section-count")
-        assert await count_pills.count() >= 1
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "tags-candidates.png"), full_page=True
-        )
-    except Exception:
-        pytest.skip("No candidate tags to display")
+    await candidates.first.wait_for(timeout=5000)
+    assert await candidates.count() >= 1
+    approve = page.locator(".btn-approve")
+    reject = page.locator(".btn-reject")
+    assert await approve.count() >= 1
+    assert await reject.count() >= 1
+    # Each candidate should have an article count pill
+    count_pills = page.locator(".vocab-candidate-row .section-count")
+    assert await count_pills.count() >= 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-candidates.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
-async def test_tags_add_and_remove(page: Page, base_url: str) -> None:
+async def test_tags_add_and_remove(page: Page, base_url: str, mock_api: MockState) -> None:
     """Add a tag to vocabulary and verify it appears, then remove it."""
     await page.goto(f"{base_url}/#/tags")
     add_input = page.locator(".vocab-add-input")
@@ -407,39 +377,33 @@ async def test_tags_add_and_remove(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tags_section_count_pills(page: Page, base_url: str) -> None:
+async def test_tags_section_count_pills(page: Page, base_url: str, mock_api: MockState) -> None:
     """Section headings on Tags page use pill badges for counts."""
     await page.goto(f"{base_url}/#/tags")
     await page.wait_for_selector(".prefs-section", timeout=5000)
     count_pills = page.locator("h2 .section-count")
-    try:
-        await count_pills.first.wait_for(timeout=3000)
-        assert await count_pills.count() >= 1
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "tags-section-counts.png"), full_page=True
-        )
-    except Exception:
-        pytest.skip("No section count pills visible")
+    await count_pills.first.wait_for(timeout=5000)
+    assert await count_pills.count() >= 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-section-counts.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
-async def test_tags_learned_weights(page: Page, base_url: str) -> None:
+async def test_tags_learned_weights(page: Page, base_url: str, mock_api: MockState) -> None:
     """Tags page displays learned tag weights with bars and reset buttons."""
     await page.goto(f"{base_url}/#/tags")
     weights = page.locator(".tag-weight-row")
-    try:
-        await weights.first.wait_for(timeout=3000)
-        reset_btns = page.locator(".btn-reset svg")
-        assert await reset_btns.count() > 0
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "tags-weights.png"), full_page=True
-        )
-    except Exception:
-        pytest.skip("No tag weights to display")
+    await weights.first.wait_for(timeout=5000)
+    reset_btns = page.locator(".btn-reset svg")
+    assert await reset_btns.count() > 0
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-weights.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
-async def test_tags_dark_mode(page: Page, base_url: str) -> None:
+async def test_tags_dark_mode(page: Page, base_url: str, mock_api: MockState) -> None:
     """Dark mode: tags page renders correctly."""
     await page.emulate_media(color_scheme="dark")
     await page.goto(f"{base_url}/#/tags")
@@ -453,7 +417,7 @@ async def test_tags_dark_mode(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sources_page_form(page: Page, base_url: str) -> None:
+async def test_sources_page_form(page: Page, base_url: str, mock_api: MockState) -> None:
     """Sources page renders the add-source form with segmented control and add button."""
     await page.goto(f"{base_url}/#/sources")
     await page.wait_for_selector(".source-form")
@@ -466,7 +430,7 @@ async def test_sources_page_form(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sources_segmented_control(page: Page, base_url: str) -> None:
+async def test_sources_segmented_control(page: Page, base_url: str, mock_api: MockState) -> None:
     """Sources form has a segmented control with RSS Feed and Web Page options."""
     await page.goto(f"{base_url}/#/sources")
     segmented = page.locator(".segmented-control")
@@ -487,66 +451,54 @@ async def test_sources_segmented_control(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sources_list_with_icons(page: Page, base_url: str) -> None:
+async def test_sources_list_with_icons(page: Page, base_url: str, mock_api: MockState) -> None:
     """Sources page shows source rows with icon action buttons and fetch info."""
     await page.goto(f"{base_url}/#/sources")
     rows = page.locator(".source-row")
-    try:
-        await rows.first.wait_for(timeout=5000)
-        # Should have icon action buttons (refresh + trash SVGs)
-        icon_btns = page.locator(".btn-icon-action")
-        assert await icon_btns.count() >= 2
-        # Should show fetch interval
-        intervals = page.locator(".source-interval")
-        assert await intervals.count() >= 1
-        # Should show next run info
-        next_runs = page.locator(".source-next-run")
-        assert await next_runs.count() >= 1
-        await page.screenshot(path=str(SCREENSHOT_DIR / "sources-list.png"), full_page=True)
-    except Exception:
-        pytest.skip("No sources configured")
+    await rows.first.wait_for(timeout=5000)
+    # Should have icon action buttons (refresh + trash SVGs)
+    icon_btns = page.locator(".btn-icon-action")
+    assert await icon_btns.count() >= 2
+    # Should show fetch interval
+    intervals = page.locator(".source-interval")
+    assert await intervals.count() >= 1
+    # Should show next run info
+    next_runs = page.locator(".source-next-run")
+    assert await next_runs.count() >= 1
+    await page.screenshot(path=str(SCREENSHOT_DIR / "sources-list.png"), full_page=True)
 
 
 @pytest.mark.asyncio
-async def test_sources_type_badges(page: Page, base_url: str) -> None:
+async def test_sources_type_badges(page: Page, base_url: str, mock_api: MockState) -> None:
     """Source rows display type badges (RSS or WEB)."""
     await page.goto(f"{base_url}/#/sources")
     badges = page.locator(".source-type-badge")
-    try:
-        await badges.first.wait_for(timeout=5000)
-        assert await badges.count() >= 1
-        # Badge should contain text RSS or WEB
-        text = await badges.first.text_content()
-        assert text in ("RSS", "WEB")
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "sources-type-badges.png"), full_page=True
-        )
-    except Exception:
-        pytest.skip("No sources configured")
+    await badges.first.wait_for(timeout=5000)
+    assert await badges.count() >= 1
+    # Badge should contain text RSS or WEB
+    text = await badges.first.text_content()
+    assert text in ("RSS", "WEB")
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "sources-type-badges.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
-async def test_sources_category_display(page: Page, base_url: str) -> None:
-    """Sources show category labels (or 'Uncategorized' placeholder) that are clickable."""
+async def test_sources_category_display(page: Page, base_url: str, mock_api: MockState) -> None:
+    """Sources show category labels that are clickable."""
     await page.goto(f"{base_url}/#/sources")
     cats = page.locator(".source-category")
-    try:
-        await cats.first.wait_for(timeout=5000)
-        assert await cats.count() >= 1
-        await page.screenshot(path=str(SCREENSHOT_DIR / "sources-categories.png"), full_page=True)
-    except Exception:
-        pytest.skip("No sources configured")
+    await cats.first.wait_for(timeout=5000)
+    assert await cats.count() >= 1
+    await page.screenshot(path=str(SCREENSHOT_DIR / "sources-categories.png"), full_page=True)
 
 
 @pytest.mark.asyncio
-async def test_sources_category_edit_inline(page: Page, base_url: str) -> None:
+async def test_sources_category_edit_inline(page: Page, base_url: str, mock_api: MockState) -> None:
     """Clicking a category label opens an inline input editor."""
     await page.goto(f"{base_url}/#/sources")
     cat = page.locator(".source-category").first
-    try:
-        await cat.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No sources configured")
+    await cat.wait_for(timeout=5000)
     await cat.click()
     inline_input = page.locator(".input-inline")
     await inline_input.wait_for(timeout=2000)
@@ -555,14 +507,11 @@ async def test_sources_category_edit_inline(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sources_delete_modal(page: Page, base_url: str) -> None:
+async def test_sources_delete_modal(page: Page, base_url: str, mock_api: MockState) -> None:
     """Delete button opens a custom modal dialog (not browser confirm)."""
     await page.goto(f"{base_url}/#/sources")
     delete_btn = page.locator(".btn-icon-danger").first
-    try:
-        await delete_btn.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No sources configured")
+    await delete_btn.wait_for(timeout=5000)
     await delete_btn.click()
     modal = page.locator(".modal-overlay")
     await modal.wait_for(timeout=2000)
@@ -576,46 +525,37 @@ async def test_sources_delete_modal(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sources_favicons(page: Page, base_url: str) -> None:
+async def test_sources_favicons(page: Page, base_url: str, mock_api: MockState) -> None:
     """Sources show favicons from their feed domains."""
     await page.goto(f"{base_url}/#/sources")
     favicons = page.locator(".source-favicon")
-    try:
-        await favicons.first.wait_for(timeout=5000)
-        assert await favicons.count() >= 1
-        await page.screenshot(path=str(SCREENSHOT_DIR / "sources-favicons.png"))
-    except Exception:
-        pytest.skip("No sources with favicons")
+    await favicons.first.wait_for(timeout=5000)
+    assert await favicons.count() >= 1
+    await page.screenshot(path=str(SCREENSHOT_DIR / "sources-favicons.png"))
 
 
 @pytest.mark.asyncio
-async def test_sources_extraction_rules_toggle(page: Page, base_url: str) -> None:
+async def test_sources_extraction_rules_toggle(page: Page, base_url: str, mock_api: MockState) -> None:
     """Web page sources show an extraction rules toggle bar."""
     await page.goto(f"{base_url}/#/sources")
     toggle = page.locator(".source-rules-toggle")
-    try:
-        await toggle.first.wait_for(timeout=5000)
-        # Should have brain icon and label
-        icon = toggle.first.locator(".source-rules-icon")
-        assert await icon.count() >= 1
-        label = toggle.first.locator(".source-rules-label")
-        assert await label.count() == 1
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "sources-rules-toggle.png"), full_page=True
-        )
-    except Exception:
-        pytest.skip("No web page sources configured")
+    await toggle.first.wait_for(timeout=5000)
+    # Should have brain icon and label
+    icon = toggle.first.locator(".source-rules-icon")
+    assert await icon.count() >= 1
+    label = toggle.first.locator(".source-rules-label")
+    assert await label.count() == 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "sources-rules-toggle.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
-async def test_sources_extraction_rules_panel(page: Page, base_url: str) -> None:
+async def test_sources_extraction_rules_panel(page: Page, base_url: str, mock_api: MockState) -> None:
     """Clicking the rules toggle expands the extraction rules panel."""
     await page.goto(f"{base_url}/#/sources")
-    toggle = page.locator(".source-rules-toggle")
-    try:
-        await toggle.first.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No web page sources configured")
+    toggle = page.locator(".source-rules-toggle:not(.source-auth-toggle)")
+    await toggle.first.wait_for(timeout=5000)
     # Click to expand
     await toggle.first.click()
     panel = page.locator(".source-rules-panel")
@@ -623,10 +563,7 @@ async def test_sources_extraction_rules_panel(page: Page, base_url: str) -> None
     # Should show rules grid with key-value pairs
     keys = panel.first.locator(".rules-key")
     values = panel.first.locator(".rules-value")
-    key_count = await keys.count()
-    if key_count == 0:
-        pytest.skip("No learned extraction rules")
-    assert key_count >= 2  # At least Items + Title
+    assert await keys.count() >= 2  # At least Items + Title
     assert await values.count() >= 2
     # Should have re-learn button
     relearn = panel.first.locator(".source-rules-relearn")
@@ -639,14 +576,11 @@ async def test_sources_extraction_rules_panel(page: Page, base_url: str) -> None
 
 
 @pytest.mark.asyncio
-async def test_sources_auth_toggle(page: Page, base_url: str) -> None:
+async def test_sources_auth_toggle(page: Page, base_url: str, mock_api: MockState) -> None:
     """Every source card shows an authentication disclosure toggle."""
     await page.goto(f"{base_url}/#/sources")
     card = page.locator(".source-card")
-    try:
-        await card.first.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No sources configured")
+    await card.first.wait_for(timeout=5000)
     # Auth toggle should exist on every source card
     toggle = page.locator(".source-auth-toggle")
     assert await toggle.count() >= 1
@@ -661,14 +595,11 @@ async def test_sources_auth_toggle(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sources_auth_panel(page: Page, base_url: str) -> None:
+async def test_sources_auth_panel(page: Page, base_url: str, mock_api: MockState) -> None:
     """Clicking the auth toggle expands the authentication panel with textarea and buttons."""
     await page.goto(f"{base_url}/#/sources")
     toggle = page.locator(".source-auth-toggle")
-    try:
-        await toggle.first.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No sources configured")
+    await toggle.first.wait_for(timeout=5000)
     # Click to expand
     await toggle.first.click()
     panel = page.locator(".source-auth-panel")
@@ -689,14 +620,11 @@ async def test_sources_auth_panel(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sources_auth_independent_toggle(page: Page, base_url: str) -> None:
+async def test_sources_auth_independent_toggle(page: Page, base_url: str, mock_api: MockState) -> None:
     """Auth and extraction rules disclosures toggle independently."""
     await page.goto(f"{base_url}/#/sources")
-    rules_toggle = page.locator(".source-rules-toggle")
-    try:
-        await rules_toggle.first.wait_for(timeout=5000)
-    except Exception:
-        pytest.skip("No web page sources with extraction rules")
+    rules_toggle = page.locator(".source-rules-toggle:not(.source-auth-toggle)")
+    await rules_toggle.first.wait_for(timeout=5000)
     # Open both
     await rules_toggle.first.click()
     rules_panel = page.locator(".source-rules-panel")
@@ -725,7 +653,7 @@ async def test_sources_auth_independent_toggle(page: Page, base_url: str) -> Non
 
 
 @pytest.mark.asyncio
-async def test_nav_icons_and_layout(page: Page, base_url: str) -> None:
+async def test_nav_icons_and_layout(page: Page, base_url: str, mock_api: MockState) -> None:
     """Nav bar has SVG icons on all links and Feed on the left."""
     await page.goto(f"{base_url}/#/feed")
     nav = page.locator(".nav-bar")
@@ -740,7 +668,7 @@ async def test_nav_icons_and_layout(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_nav_active_indicator(page: Page, base_url: str) -> None:
+async def test_nav_active_indicator(page: Page, base_url: str, mock_api: MockState) -> None:
     """Nav bar shows active indicator on current page."""
     for route in ["feed", "stats", "preferences"]:
         await page.goto(f"{base_url}/#/{route}")
@@ -751,7 +679,7 @@ async def test_nav_active_indicator(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_nav_logo(page: Page, base_url: str) -> None:
+async def test_nav_logo(page: Page, base_url: str, mock_api: MockState) -> None:
     """Nav bar displays the Sift logo and brand text."""
     await page.goto(f"{base_url}/#/feed")
     brand = page.locator(".nav-brand")
@@ -765,17 +693,17 @@ async def test_nav_logo(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dark_mode_feed(page: Page, base_url: str) -> None:
+async def test_dark_mode_feed(page: Page, base_url: str, mock_api: MockState) -> None:
     """Dark mode: feed page renders correctly."""
     await page.emulate_media(color_scheme="dark")
     await page.goto(f"{base_url}/#/feed")
     await page.wait_for_selector(".nav-bar")
-    await page.wait_for_selector(".article-card, .empty-state", timeout=5000)
+    await page.wait_for_selector(".article-card", timeout=5000)
     await page.screenshot(path=str(SCREENSHOT_DIR / "dark-feed.png"), full_page=True)
 
 
 @pytest.mark.asyncio
-async def test_dark_mode_stats(page: Page, base_url: str) -> None:
+async def test_dark_mode_stats(page: Page, base_url: str, mock_api: MockState) -> None:
     """Dark mode: stats page renders correctly."""
     await page.emulate_media(color_scheme="dark")
     await page.goto(f"{base_url}/#/stats")
@@ -784,7 +712,7 @@ async def test_dark_mode_stats(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dark_mode_preferences(page: Page, base_url: str) -> None:
+async def test_dark_mode_preferences(page: Page, base_url: str, mock_api: MockState) -> None:
     """Dark mode: preferences page renders correctly."""
     await page.emulate_media(color_scheme="dark")
     await page.goto(f"{base_url}/#/preferences")
@@ -793,7 +721,7 @@ async def test_dark_mode_preferences(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dark_mode_sources(page: Page, base_url: str) -> None:
+async def test_dark_mode_sources(page: Page, base_url: str, mock_api: MockState) -> None:
     """Dark mode: sources page with icon buttons."""
     await page.emulate_media(color_scheme="dark")
     await page.goto(f"{base_url}/#/sources")
@@ -802,7 +730,7 @@ async def test_dark_mode_sources(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dark_mode_help_overlay(page: Page, base_url: str) -> None:
+async def test_dark_mode_help_overlay(page: Page, base_url: str, mock_api: MockState) -> None:
     """Dark mode: help overlay renders correctly."""
     await page.emulate_media(color_scheme="dark")
     await page.goto(f"{base_url}/#/feed")
@@ -816,18 +744,18 @@ async def test_dark_mode_help_overlay(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_mobile_feed(page: Page, base_url: str) -> None:
+async def test_mobile_feed(page: Page, base_url: str, mock_api: MockState) -> None:
     """Mobile viewport (375px) renders feed correctly."""
     await page.set_viewport_size({"width": 375, "height": 812})
     await page.goto(f"{base_url}/#/feed")
     await page.wait_for_selector(".nav-bar")
-    await page.wait_for_selector(".article-card, .empty-state", timeout=5000)
+    await page.wait_for_selector(".article-card", timeout=5000)
     await page.screenshot(path=str(SCREENSHOT_DIR / "mobile-feed.png"), full_page=True)
     await page.set_viewport_size({"width": 1280, "height": 800})
 
 
 @pytest.mark.asyncio
-async def test_mobile_sources(page: Page, base_url: str) -> None:
+async def test_mobile_sources(page: Page, base_url: str, mock_api: MockState) -> None:
     """Mobile viewport (375px) renders sources with icon buttons."""
     await page.set_viewport_size({"width": 375, "height": 812})
     await page.goto(f"{base_url}/#/sources")
@@ -837,7 +765,7 @@ async def test_mobile_sources(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_mobile_stats(page: Page, base_url: str) -> None:
+async def test_mobile_stats(page: Page, base_url: str, mock_api: MockState) -> None:
     """Mobile viewport (375px) renders stats correctly."""
     await page.set_viewport_size({"width": 375, "height": 812})
     await page.goto(f"{base_url}/#/stats")
@@ -850,48 +778,36 @@ async def test_mobile_stats(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_onboarding_modal_shows_for_cold_start(page: Page, base_url: str) -> None:
-    """Onboarding modal appears when profile_version == 0 and not previously dismissed."""
-    # Clear any prior dismissal
+async def test_onboarding_modal_shows_for_cold_start(page: Page, base_url: str, mock_api_cold_start: MockState) -> None:
+    """Onboarding modal appears when profile_version == 0."""
     await page.goto(f"{base_url}/#/feed")
-    await page.evaluate("localStorage.removeItem('sift-onboarding-dismissed')")
-    await page.reload()
     await page.wait_for_selector(".feed-toolbar")
-    # Modal should appear if profile_version == 0
     modal = page.locator(".onboarding-dialog")
-    try:
-        await modal.wait_for(timeout=3000)
-        # Should have title and input
-        title = modal.locator(".modal-title")
-        assert "Welcome" in (await title.text_content() or "")
-        input_el = modal.locator(".onboarding-input")
-        assert await input_el.count() == 1
-        # Should have Skip and Get Started buttons
-        skip = modal.locator(".modal-btn-cancel")
-        assert await skip.count() == 1
-        start = modal.locator(".modal-btn-confirm")
-        assert await start.count() == 1
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "onboarding-modal.png")
-        )
-        # Dismiss to not interfere with other tests
-        await skip.click()
-    except Exception:
-        pytest.skip("Profile already onboarded (profile_version > 0)")
+    await modal.wait_for(timeout=3000)
+    # Should have title and input
+    title = modal.locator(".modal-title")
+    assert "Welcome" in (await title.text_content() or "")
+    input_el = modal.locator(".onboarding-input")
+    assert await input_el.count() == 1
+    # Should have Skip and Get Started buttons
+    skip = modal.locator(".modal-btn-cancel")
+    assert await skip.count() == 1
+    start = modal.locator(".modal-btn-confirm")
+    assert await start.count() == 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "onboarding-modal.png")
+    )
+    # Dismiss to not interfere with other tests
+    await skip.click()
 
 
 @pytest.mark.asyncio
-async def test_onboarding_add_interest_pills(page: Page, base_url: str) -> None:
+async def test_onboarding_add_interest_pills(page: Page, base_url: str, mock_api_cold_start: MockState) -> None:
     """Typing interests and pressing Enter adds pills in the onboarding modal."""
     await page.goto(f"{base_url}/#/feed")
-    await page.evaluate("localStorage.removeItem('sift-onboarding-dismissed')")
-    await page.reload()
     await page.wait_for_selector(".feed-toolbar")
     modal = page.locator(".onboarding-dialog")
-    try:
-        await modal.wait_for(timeout=3000)
-    except Exception:
-        pytest.skip("Profile already onboarded (profile_version > 0)")
+    await modal.wait_for(timeout=3000)
     input_el = modal.locator(".onboarding-input")
     await input_el.fill("rust")
     await input_el.press("Enter")
@@ -908,11 +824,9 @@ async def test_onboarding_add_interest_pills(page: Page, base_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_onboarding_not_shown_when_dismissed(page: Page, base_url: str) -> None:
-    """Onboarding modal does not appear after being dismissed."""
+async def test_onboarding_not_shown_when_dismissed(page: Page, base_url: str, mock_api: MockState) -> None:
+    """Onboarding modal does not appear when profile_version > 0."""
     await page.goto(f"{base_url}/#/feed")
-    await page.evaluate("localStorage.setItem('sift-onboarding-dismissed', 'true')")
-    await page.reload()
     await page.wait_for_selector(".feed-toolbar")
     await page.wait_for_timeout(1000)
     modal = page.locator(".onboarding-dialog")
@@ -923,44 +837,37 @@ async def test_onboarding_not_shown_when_dismissed(page: Page, base_url: str) ->
 
 
 @pytest.mark.asyncio
-async def test_tags_quality_section(page: Page, base_url: str) -> None:
-    """Tags page shows tag quality section when noisy tags exist."""
+async def test_tags_quality_section(page: Page, base_url: str, mock_api: MockState) -> None:
+    """Tags page shows tag quality section with noisy tags."""
     await page.goto(f"{base_url}/#/tags")
     await page.wait_for_selector(".prefs-section", timeout=5000)
     table = page.locator(".tag-quality-table")
-    try:
-        await table.wait_for(timeout=3000)
-        # Should have header and at least one data row
-        header = table.locator(".tag-quality-header")
-        assert await header.count() == 1
-        rows = table.locator(".tag-quality-row:not(.tag-quality-header)")
-        assert await rows.count() >= 1
-        # Each row should have warning icon, votes, and bar
-        name_cell = rows.first.locator(".tag-quality-name svg")
-        assert await name_cell.count() >= 1
-        bar = rows.first.locator(".tag-quality-bar-fill")
-        assert await bar.count() == 1
-        await page.screenshot(
-            path=str(SCREENSHOT_DIR / "tags-quality.png"), full_page=True
-        )
-    except Exception:
-        pytest.skip("No noisy tags to display (need feedback on tags)")
+    await table.wait_for(timeout=5000)
+    # Should have header and at least one data row
+    header = table.locator(".tag-quality-header")
+    assert await header.count() == 1
+    rows = table.locator(".tag-quality-row:not(.tag-quality-header)")
+    assert await rows.count() >= 1
+    # Each row should have warning icon, votes, and bar
+    name_cell = rows.first.locator(".tag-quality-name svg")
+    assert await name_cell.count() >= 1
+    bar = rows.first.locator(".tag-quality-bar-fill")
+    assert await bar.count() == 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "tags-quality.png"), full_page=True
+    )
 
 
 @pytest.mark.asyncio
-async def test_tags_quality_disagreement_bars(page: Page, base_url: str) -> None:
+async def test_tags_quality_disagreement_bars(page: Page, base_url: str, mock_api: MockState) -> None:
     """Tag quality rows show disagreement ratio bars and percentage labels."""
     await page.goto(f"{base_url}/#/tags")
     table = page.locator(".tag-quality-table")
-    try:
-        await table.wait_for(timeout=3000)
-        rows = table.locator(".tag-quality-row:not(.tag-quality-header)")
-        count = await rows.count()
-        if count == 0:
-            pytest.skip("No noisy tags")
-        for i in range(min(count, 3)):
-            bar = rows.nth(i).locator(".tag-quality-bar-fill")
-            width = await bar.evaluate("el => el.style.width")
-            assert width.endswith("%"), f"Expected percentage width, got {width}"
-    except Exception:
-        pytest.skip("No noisy tags to display")
+    await table.wait_for(timeout=5000)
+    rows = table.locator(".tag-quality-row:not(.tag-quality-header)")
+    count = await rows.count()
+    assert count >= 1
+    for i in range(min(count, 3)):
+        bar = rows.nth(i).locator(".tag-quality-bar-fill")
+        width = await bar.evaluate("el => el.style.width")
+        assert width.endswith("%"), f"Expected percentage width, got {width}"
