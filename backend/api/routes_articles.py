@@ -129,10 +129,7 @@ async def list_articles(
             JOIN sources s ON a.source_id = s.id
             LEFT JOIN feedback f ON a.id = f.article_id
             WHERE {where_clause}
-            ORDER BY
-                CASE WHEN a.relevance_score IS NOT NULL
-                     THEN a.relevance_score ELSE -1 END DESC,
-                a.published_at DESC NULLS LAST
+            ORDER BY a.published_at DESC NULLS LAST
             LIMIT ? OFFSET ?
         """
         args.extend([params.limit, params.offset])
