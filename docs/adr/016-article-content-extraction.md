@@ -20,6 +20,13 @@ Key design choices:
 
 Extraction tracking columns (`extraction_status`, `extraction_attempted_at`) enable retry logic and monitoring without re-fetching already-processed articles.
 
+## Two-phase architecture
+The extraction job uses a two-phase design to avoid SQLite write contention:
+1. **Phase 1 — Concurrent HTTP fetch**: all articles are fetched in parallel (with per-domain rate limiting and semaphore). Results are written to a local file cache (`data/extraction_cache/{article_id}.json`).
+2. **Phase 2 — Single-transaction DB write**: all results are written to the database in one transaction on one connection, then cache files are removed.
+
+The file cache ensures that if the DB write fails (e.g. lock contention), the extracted content is preserved on disk and reused on the next run — avoiding redundant HTTP requests to sources.
+
 ## Consequences
 - Better scoring quality: LLM sees full article context instead of truncated RSS snippets
 - ~15s latency per article extraction (fetch + parse), handled asynchronously in background
@@ -27,3 +34,4 @@ Extraction tracking columns (`extraction_status`, `extraction_attempted_at`) ena
 - Extraction failures gracefully fall back to existing `content_snippet` — no regression
 - Articles already scored keep their scores; only new articles benefit from richer content
 - New "extract" job visible in Stats page with run/trigger support
+- File cache prevents re-fetching from sources on transient DB failures

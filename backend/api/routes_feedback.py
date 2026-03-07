@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import sqlite3
 
 from fastapi import APIRouter, HTTPException
 
@@ -9,46 +11,56 @@ from backend.preferences.feedback_processor import process_feedback
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/feedback", tags=["feedback"])
 
+MAX_DB_RETRIES = 3
+
 
 @router.post("")
 async def create_feedback(feedback: FeedbackCreate) -> Feedback:
-    db = await get_db()
-    try:
-        # Verify article exists
-        article = await db.execute_fetchall(
-            "SELECT id FROM articles WHERE id = ?", (feedback.article_id,)
-        )
-        if not article:
-            raise HTTPException(status_code=404, detail="Article not found")
+    for attempt in range(MAX_DB_RETRIES):
+        db = await get_db()
+        try:
+            # Verify article exists
+            article = await db.execute_fetchall(
+                "SELECT id FROM articles WHERE id = ?", (feedback.article_id,)
+            )
+            if not article:
+                raise HTTPException(status_code=404, detail="Article not found")
 
-        # Upsert feedback
-        await db.execute(
-            """
-            INSERT INTO feedback (article_id, rating)
-            VALUES (?, ?)
-            ON CONFLICT (article_id) DO UPDATE SET
-                rating = excluded.rating,
-                created_at = datetime('now')
-            """,
-            (feedback.article_id, feedback.rating),
-        )
-        # Vote marks article as read
-        if feedback.rating != 0:
+            # Upsert feedback
             await db.execute(
-                "UPDATE articles SET is_read = 1 WHERE id = ?",
-                (feedback.article_id,),
+                """
+                INSERT INTO feedback (article_id, rating)
+                VALUES (?, ?)
+                ON CONFLICT (article_id) DO UPDATE SET
+                    rating = excluded.rating,
+                    created_at = datetime('now')
+                """,
+                (feedback.article_id, feedback.rating),
             )
-        await process_feedback(db, feedback.article_id, feedback.rating)
-        await db.commit()
+            # Vote marks article as read
+            if feedback.rating != 0:
+                await db.execute(
+                    "UPDATE articles SET is_read = 1 WHERE id = ?",
+                    (feedback.article_id,),
+                )
+            await process_feedback(db, feedback.article_id, feedback.rating)
+            await db.commit()
 
-        rows = list(
-            await db.execute_fetchall(
-                "SELECT * FROM feedback WHERE article_id = ?", (feedback.article_id,)
+            rows = list(
+                await db.execute_fetchall(
+                    "SELECT * FROM feedback WHERE article_id = ?", (feedback.article_id,)
+                )
             )
-        )
-        return Feedback(**dict(rows[0]))
-    finally:
-        await db.close()
+            return Feedback(**dict(rows[0]))
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e) and attempt < MAX_DB_RETRIES - 1:
+                logger.warning("DB locked on feedback write, retrying (attempt %d)", attempt + 1)
+                await asyncio.sleep(1 * (attempt + 1))
+                continue
+            raise
+        finally:
+            await db.close()
+    raise HTTPException(status_code=503, detail="Database busy, please retry")
 
 
 @router.get("")

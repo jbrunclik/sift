@@ -5,6 +5,7 @@ import logging
 
 from backend.config import settings
 from backend.database import get_db
+from backend.extraction.cache import cleanup_stale as cleanup_extraction_cache
 
 logger = logging.getLogger(__name__)
 
@@ -78,18 +79,22 @@ async def run_cleanup() -> None:
 
         await db.commit()
 
-        # VACUUM to reclaim space
-        await db.execute("VACUUM")
+        # Optimize query planner stats (lightweight, no exclusive lock)
+        await db.execute("PRAGMA optimize")
+
+        # Clean up stale extraction cache files (> 7 days)
+        details["extraction_cache"] = cleanup_extraction_cache()
 
         logger.info(
             "Cleanup complete: articles=%d, tags=%d, candidates=%d, "
-            "fetch_logs=%d, scoring_logs=%d, scheduler_runs=%d",
+            "fetch_logs=%d, scoring_logs=%d, scheduler_runs=%d, cache=%d",
             details["articles_deleted"],
             details["orphan_tags"],
             details["stale_candidates"],
             details["fetch_logs"],
             details["scoring_logs"],
             details["scheduler_runs"],
+            details["extraction_cache"],
         )
     except Exception:
         logger.exception("Cleanup failed")

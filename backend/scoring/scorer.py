@@ -89,7 +89,7 @@ async def score_batch(
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     temperature=0.2,
-                    max_output_tokens=4096,
+                    max_output_tokens=8192,
                     response_mime_type="application/json",
                     response_schema=BatchScoringResponse,
                 ),

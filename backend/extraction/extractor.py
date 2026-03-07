@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
@@ -9,6 +10,7 @@ import trafilatura
 
 from backend.config import settings
 from backend.database import get_db
+from backend.extraction.cache import read_cached, remove_cached, write_cached
 from backend.sources.base import SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -74,24 +76,15 @@ def _detect_truncation(
     return bool(avg_length and content_len < avg_length * 0.3)
 
 
-async def _update_avg_content_length(
-    source_id: int, content_length: int, current_avg: float | None
-) -> None:
-    """Update EMA of content length for a source."""
-    if current_avg is None:
-        new_avg = float(content_length)
-    else:
-        new_avg = EMA_ALPHA * content_length + (1 - EMA_ALPHA) * current_avg
+@dataclass
+class ExtractionResult:
+    """Result of extracting a single article."""
 
-    db = await get_db()
-    try:
-        await db.execute(
-            "UPDATE sources SET avg_content_length = ? WHERE id = ?",
-            (new_avg, source_id),
-        )
-        await db.commit()
-    finally:
-        await db.close()
+    article_id: int
+    source_id: int
+    status: str  # 'success', 'failed', 'skipped', 'truncated'
+    content: str | None
+    avg_length: float | None
 
 
 async def extract_articles() -> dict[str, int]:
@@ -139,24 +132,30 @@ async def extract_articles() -> dict[str, int]:
     semaphore = asyncio.Semaphore(settings.extraction_max_concurrent)
     domain_last_request: dict[str, float] = {}
     domain_locks: dict[str, asyncio.Lock] = {}
-    stats = {
-        "total": len(articles),
-        "success": 0,
-        "failed": 0,
-        "skipped": 0,
-        "truncated": 0,
-    }
 
-    async def process(
+    async def fetch_one(
         article: dict[str, object],
         client: httpx.AsyncClient,
-    ) -> None:
+    ) -> ExtractionResult:
+        """Fetch and classify a single article. No DB writes."""
         article_id = int(str(article["id"]))
         url = str(article["url"])
         source_id = int(str(article["source_id"]))
         snippet = article["snippet"]
-        avg_length = article["avg_content_length"]
+        raw_avg = article["avg_content_length"]
+        avg_length: float | None = float(str(raw_avg)) if raw_avg is not None else None
         config = source_configs[source_id]
+
+        # Check local cache first (survives DB write failures)
+        cached = read_cached(article_id)
+        if cached is not None:
+            logger.debug("Cache hit for article %d", article_id)
+            return ExtractionResult(
+                article_id, source_id,
+                str(cached["status"]),
+                str(cached["content"]) if cached["content"] is not None else None,
+                avg_length,
+            )
 
         domain = urlparse(url).netloc
 
@@ -174,83 +173,37 @@ async def extract_articles() -> dict[str, int]:
         async with semaphore:
             result = await extract_single_article(url, client)
 
-        now = datetime.now(UTC).isoformat()
-        db_conn = await get_db()
-        try:
-            if result is None:
-                stats["failed"] += 1
-                await db_conn.execute(
-                    """
-                    UPDATE articles
-                    SET extraction_status = 'failed', extraction_attempted_at = ?
-                    WHERE id = ?
-                    """,
-                    (now, article_id),
-                )
-            elif result == "":
-                stats["skipped"] += 1
-                await db_conn.execute(
-                    """
-                    UPDATE articles
-                    SET extraction_status = 'skipped', extraction_attempted_at = ?
-                    WHERE id = ?
-                    """,
-                    (now, article_id),
-                )
-            else:
-                # Check truncation for auth sources
-                is_truncated = False
-                if config.has_auth():
-                    is_truncated = _detect_truncation(
-                        result,
-                        str(snippet) if snippet else None,
-                        float(str(avg_length)) if avg_length is not None else None,
-                    )
+        if result is None:
+            write_cached(article_id, "failed", None)
+            return ExtractionResult(article_id, source_id, "failed", None, avg_length)
+        if result == "":
+            write_cached(article_id, "skipped", None)
+            return ExtractionResult(article_id, source_id, "skipped", None, avg_length)
 
-                if is_truncated:
-                    stats["truncated"] += 1
-                    await db_conn.execute(
-                        """
-                        UPDATE articles
-                        SET content_full = ?, extraction_status = 'truncated',
-                            extraction_attempted_at = ?
-                        WHERE id = ?
-                        """,
-                        (result, now, article_id),
-                    )
-                    logger.warning(
-                        "Truncation detected for article %d (%s) — %d chars",
-                        article_id, url, len(result),
-                    )
-                else:
-                    stats["success"] += 1
-                    await db_conn.execute(
-                        """
-                        UPDATE articles
-                        SET content_full = ?, extraction_status = 'success',
-                            extraction_attempted_at = ?
-                        WHERE id = ?
-                        """,
-                        (result, now, article_id),
-                    )
-                    # Update EMA for non-truncated successful extractions
-                    await _update_avg_content_length(
-                        source_id,
-                        len(result),
-                        float(str(avg_length)) if avg_length is not None else None,
-                    )
-            await db_conn.commit()
-        finally:
-            await db_conn.close()
+        # Check truncation for auth sources
+        if config.has_auth() and _detect_truncation(
+            result,
+            str(snippet) if snippet else None,
+            avg_length,
+        ):
+            logger.warning(
+                "Truncation detected for article %d (%s) — %d chars",
+                article_id, url, len(result),
+            )
+            write_cached(article_id, "truncated", result)
+            return ExtractionResult(article_id, source_id, "truncated", result, avg_length)
 
-    # Create per-source clients for auth sources, share default for the rest
+        write_cached(article_id, "success", result)
+        return ExtractionResult(article_id, source_id, "success", result, avg_length)
+
+    # --- Phase 1: Fetch all articles concurrently ---
     default_headers = {"User-Agent": USER_AGENT}
 
+    results: list[ExtractionResult] = []
     async with httpx.AsyncClient(
         headers=default_headers,
         follow_redirects=True,
     ) as default_client:
-        # Build auth clients for sources that need them
         auth_clients: dict[int, httpx.AsyncClient] = {}
         for sid, config in source_configs.items():
             if config.has_auth():
@@ -265,11 +218,103 @@ async def extract_articles() -> dict[str, int]:
             for art in articles:
                 sid = int(str(art["source_id"]))
                 client = auth_clients.get(sid, default_client)
-                tasks.append(process(art, client))
-            await asyncio.gather(*tasks, return_exceptions=True)
+                tasks.append(fetch_one(art, client))
+            outcomes = await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             for c in auth_clients.values():
                 await c.aclose()
+
+    # Separate successful results from exceptions
+    for i, outcome in enumerate(outcomes):
+        if isinstance(outcome, BaseException):
+            article_id = int(str(articles[i]["id"]))
+            logger.error("Extraction task failed for article %d: %s", article_id, outcome)
+            results.append(ExtractionResult(
+                article_id,
+                int(str(articles[i]["source_id"])),
+                "failed",
+                None,
+                None,
+            ))
+        else:
+            results.append(outcome)
+
+    # --- Phase 2: Write all results to DB in a single transaction ---
+    stats = {"total": len(articles), "success": 0, "failed": 0, "skipped": 0, "truncated": 0}
+    now = datetime.now(UTC).isoformat()
+
+    # Track EMA updates per source (last one wins)
+    ema_updates: dict[int, float] = {}
+
+    db = await get_db()
+    try:
+        for r in results:
+            if r.status == "failed":
+                stats["failed"] += 1
+                await db.execute(
+                    """
+                    UPDATE articles
+                    SET extraction_status = 'failed', extraction_attempted_at = ?
+                    WHERE id = ?
+                    """,
+                    (now, r.article_id),
+                )
+            elif r.status == "skipped":
+                stats["skipped"] += 1
+                await db.execute(
+                    """
+                    UPDATE articles
+                    SET extraction_status = 'skipped', extraction_attempted_at = ?
+                    WHERE id = ?
+                    """,
+                    (now, r.article_id),
+                )
+            elif r.status == "truncated":
+                stats["truncated"] += 1
+                await db.execute(
+                    """
+                    UPDATE articles
+                    SET content_full = ?, extraction_status = 'truncated',
+                        extraction_attempted_at = ?
+                    WHERE id = ?
+                    """,
+                    (r.content, now, r.article_id),
+                )
+            else:
+                stats["success"] += 1
+                await db.execute(
+                    """
+                    UPDATE articles
+                    SET content_full = ?, extraction_status = 'success',
+                        extraction_attempted_at = ?
+                    WHERE id = ?
+                    """,
+                    (r.content, now, r.article_id),
+                )
+                # Compute EMA update
+                content_len = len(r.content) if r.content else 0
+                current_avg = r.avg_length
+                if current_avg is None:
+                    ema_updates[r.source_id] = float(content_len)
+                else:
+                    ema_updates[r.source_id] = (
+                        EMA_ALPHA * content_len + (1 - EMA_ALPHA) * current_avg
+                    )
+
+        # Apply EMA updates for sources
+        for source_id, new_avg in ema_updates.items():
+            await db.execute(
+                "UPDATE sources SET avg_content_length = ? WHERE id = ?",
+                (new_avg, source_id),
+            )
+
+        await db.commit()
+
+        # DB commit succeeded — remove cache files for all committed articles
+        for r in results:
+            remove_cached(r.article_id)
+    finally:
+        await db.close()
 
     logger.info(
         "Extraction complete: %d total, %d success, %d failed, %d skipped, %d truncated",

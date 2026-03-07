@@ -104,7 +104,7 @@ class RSSSource(BaseSource):
 
         for entry in feed.entries:
             url = entry.get("link", "")
-            title = entry.get("title", "")
+            title = html.unescape(entry.get("title", ""))
             if not url or not title:
                 continue
 
