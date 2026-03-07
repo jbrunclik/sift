@@ -756,6 +756,202 @@
   color: var(--color-primary);
 }
 
+.source-type-hackernews {
+  background: color-mix(in srgb, #ff6600 15%, transparent);
+  color: #ff6600;
+}
+
+/* ===== Platform Sources ===== */
+.platforms-section {
+  margin-bottom: var(--space-8);
+}
+
+.section-heading {
+  font-size: var(--font-base);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-4);
+  letter-spacing: -0.01em;
+}
+
+.platform-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.platform-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: all var(--transition);
+}
+
+.platform-card.enabled {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border-subtle));
+}
+
+/* Header — always visible, clickable to expand */
+.platform-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.platform-header:hover {
+  background: var(--color-primary-subtle);
+}
+
+.platform-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: transform var(--transition-fast);
+}
+
+.platform-chevron.rotated {
+  transform: rotate(90deg);
+}
+
+.platform-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.platform-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.platform-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.platform-name {
+  font-weight: 600;
+  font-size: var(--font-sm);
+  color: var(--color-text);
+}
+
+.platform-status-hint {
+  font-size: var(--font-xs);
+  color: var(--color-muted);
+}
+
+/* Toggle switch */
+.platform-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.platform-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.platform-toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--color-border);
+  border-radius: 10px;
+  transition: background var(--transition-fast);
+}
+
+.platform-toggle-slider::before {
+  content: "";
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform var(--transition-fast);
+}
+
+.platform-toggle input:checked + .platform-toggle-slider {
+  background: var(--color-primary);
+}
+
+.platform-toggle input:checked + .platform-toggle-slider::before {
+  transform: translateX(16px);
+}
+
+/* Collapsible body — hidden by default */
+.platform-body {
+  display: none;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.platform-open .platform-body {
+  display: block;
+}
+
+.platform-config {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.platform-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.platform-field label {
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.platform-field .input {
+  width: 100%;
+}
+
+/* Status + actions on one row: meta left, buttons right */
+.platform-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.platform-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.0625rem;
+}
+
+.platform-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* Source card wrapper (holds row + optional rules panel) */
 .source-card {
   background: var(--color-surface);

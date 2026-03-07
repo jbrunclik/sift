@@ -92,9 +92,8 @@ This file serves as a memory bank for agents: it tracks what's been done, what's
 - [x] Cold-start onboarding endpoint `POST /api/onboarding`
 - [x] Tag quality instrumentation: feedback stats tracking, noisy tag detection (migration 012)
 
-### Feedback loop [TODO — remaining]
+### Feedback loop [DONE]
 - [x] Cold-start wizard frontend (onboarding modal when `profile_version == 0`)
-- [ ] `POST /api/articles/submit-url` for manually submitting missed links
 
 ### Article content extraction [DONE]
 - [x] Fetch actual article content (not just RSS summaries) for better LLM scoring
@@ -145,7 +144,8 @@ Design decisions accepted (ADRs written). Implementation complete.
 
 - [x] `backend/sources/webpage.py` (generic web page with LLM-learned CSS extraction rules)
 - [x] Per-source authentication with paywall truncation detection (ADR-019)
-- [ ] `backend/sources/hackernews.py` (Firebase REST API)
+- [x] Platform sources pattern: singleton discoverable plugins with config forms (ADR-023)
+- [x] `backend/sources/hackernews.py` (Firebase REST API)
 - [ ] `backend/sources/youtube.py` (YouTube RSS feeds)
 - [ ] `backend/sources/reddit.py` (httpx-based, asyncpraw has dep conflicts)
 - [ ] `backend/sources/hncz.py` (RSS/scrape)
@@ -164,6 +164,7 @@ Design decisions accepted (ADRs written). Implementation complete.
 - [ ] Deploy scripts for Hetzner (nginx reverse proxy, user systemd units)
 - [ ] Systemd timers for fetching (replace in-process APScheduler)
 - [ ] Systemd timer for scoring/evaluation pipeline
+- [ ] SQLite VACUUM via systemd timer (nightly, outside app process)
 - [ ] SQLite backup via systemd timer (daily, keep 7 days)
 - [ ] E2E tests (Playwright browser flows)
 - [x] Visual regression tests (Playwright screenshot tests for feed, stats, preferences, modals)

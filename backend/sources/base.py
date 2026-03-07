@@ -1,6 +1,6 @@
 import json
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
@@ -43,6 +43,12 @@ class BaseSource(ABC):
     display_name: str = ""
     requires_playwright: bool = False
 
+    # Platform sources (HN, YouTube, Reddit) are singletons with discoverable UI
+    is_platform: bool = False
+    platform_description: str = ""
+    config_fields: ClassVar[list[dict[str, object]]] = []
+    auth_type: str | None = None  # None | "api_key" | "oauth" — for future use
+
     def __init__(
         self,
         config: SourceConfig,
@@ -80,3 +86,8 @@ def get_source_class(source_type: str) -> type[BaseSource] | None:
 def get_all_source_types() -> list[str]:
     """Return all registered source type strings."""
     return list(_source_registry.keys())
+
+
+def get_platform_source_types() -> list[type[BaseSource]]:
+    """Return all registered platform source classes."""
+    return [cls for cls in _source_registry.values() if cls.is_platform]

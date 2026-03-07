@@ -649,6 +649,181 @@ async def test_sources_auth_independent_toggle(page: Page, base_url: str, mock_a
     await card_auth_toggle.click()
 
 
+# ── Platform sources ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_platform_section_visible(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """Sources page shows a Platforms section with heading and cards."""
+    await page.goto(f"{base_url}/#/sources")
+    heading = page.locator(".section-heading", has_text="Platforms")
+    await heading.wait_for(timeout=5000)
+    grid = page.locator(".platform-grid")
+    assert await grid.count() == 1
+    cards = page.locator(".platform-card")
+    assert await cards.count() >= 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "platforms-section.png"), full_page=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_platform_card_collapsed(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """Platform card is collapsed by default showing header only."""
+    await page.goto(f"{base_url}/#/sources")
+    card = page.locator(".platform-card").first
+    await card.wait_for(timeout=5000)
+    # Card should NOT have .platform-open class
+    cls = await card.get_attribute("class") or ""
+    assert "platform-open" not in cls
+    # Header should be visible
+    header = card.locator(".platform-header")
+    assert await header.is_visible()
+    # Body should be hidden
+    body = card.locator(".platform-body")
+    assert await body.count() == 0 or not await body.is_visible()
+    await card.screenshot(
+        path=str(SCREENSHOT_DIR / "platform-card-collapsed.png")
+    )
+
+
+@pytest.mark.asyncio
+async def test_platform_card_expand(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """Clicking platform card header expands config, status, actions."""
+    await page.goto(f"{base_url}/#/sources")
+    card = page.locator(".platform-card").first
+    await card.wait_for(timeout=5000)
+    header = card.locator(".platform-header")
+    await header.click()
+    # Should now be open
+    cls = await card.get_attribute("class") or ""
+    assert "platform-open" in cls
+    # Body should be visible
+    body = card.locator(".platform-body")
+    await body.wait_for(state="visible", timeout=2000)
+    # Config fields should be present
+    fields = body.locator(".platform-field")
+    assert await fields.count() >= 1
+    # Actions should be present
+    actions = body.locator(".platform-actions")
+    assert await actions.count() == 1
+    await card.screenshot(
+        path=str(SCREENSHOT_DIR / "platform-card-expanded.png")
+    )
+
+
+@pytest.mark.asyncio
+async def test_platform_toggle_switch(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """Platform card has a toggle switch that reflects enabled state."""
+    await page.goto(f"{base_url}/#/sources")
+    card = page.locator(".platform-card").first
+    await card.wait_for(timeout=5000)
+    toggle = card.locator(".platform-toggle input[type='checkbox']")
+    assert await toggle.count() == 1
+    # HN mock is enabled, so checkbox should be checked
+    assert await toggle.is_checked()
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "platform-toggle.png")
+    )
+
+
+@pytest.mark.asyncio
+async def test_platform_icon_renders(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """HN platform card shows the Y Combinator icon."""
+    await page.goto(f"{base_url}/#/sources")
+    card = page.locator(".platform-card").first
+    await card.wait_for(timeout=5000)
+    icon = card.locator(".platform-icon svg")
+    assert await icon.count() == 1
+    # Name should show Hacker News
+    name = card.locator(".platform-name")
+    assert "Hacker News" in (await name.text_content() or "")
+
+
+@pytest.mark.asyncio
+async def test_platform_action_icons(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """Expanded platform card has icon action buttons (save + fetch)."""
+    await page.goto(f"{base_url}/#/sources")
+    card = page.locator(".platform-card").first
+    await card.wait_for(timeout=5000)
+    # Expand
+    await card.locator(".platform-header").click()
+    body = card.locator(".platform-body")
+    await body.wait_for(state="visible", timeout=2000)
+    # Should have icon action buttons with SVGs
+    btns = body.locator(".btn-icon-action")
+    assert await btns.count() == 2
+    for i in range(2):
+        svg = btns.nth(i).locator("svg")
+        assert await svg.count() >= 1
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "platform-action-icons.png")
+    )
+
+
+@pytest.mark.asyncio
+async def test_platform_chevron_rotates(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """Chevron rotates when platform card is expanded."""
+    await page.goto(f"{base_url}/#/sources")
+    card = page.locator(".platform-card").first
+    await card.wait_for(timeout=5000)
+    chevron = card.locator(".platform-chevron")
+    # Before click — not rotated
+    cls_before = await chevron.get_attribute("class") or ""
+    assert "rotated" not in cls_before
+    # Click to expand
+    await card.locator(".platform-header").click()
+    cls_after = await chevron.get_attribute("class") or ""
+    assert "rotated" in cls_after
+    # Click again to collapse
+    await card.locator(".platform-header").click()
+    cls_final = await chevron.get_attribute("class") or ""
+    assert "rotated" not in cls_final
+
+
+@pytest.mark.asyncio
+async def test_platform_custom_sources_heading(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """Sources page shows 'Custom Sources' heading above the form."""
+    await page.goto(f"{base_url}/#/sources")
+    heading = page.locator(".section-heading", has_text="Custom Sources")
+    await heading.wait_for(timeout=5000)
+
+
+@pytest.mark.asyncio
+async def test_platform_dark_mode(
+    page: Page, base_url: str, mock_api: MockState
+) -> None:
+    """Dark mode: platform cards render correctly."""
+    await page.emulate_media(color_scheme="dark")
+    await page.goto(f"{base_url}/#/sources")
+    card = page.locator(".platform-card").first
+    await card.wait_for(timeout=5000)
+    # Expand for full dark mode check
+    await card.locator(".platform-header").click()
+    body = card.locator(".platform-body")
+    await body.wait_for(state="visible", timeout=2000)
+    await page.screenshot(
+        path=str(SCREENSHOT_DIR / "dark-platform-expanded.png"),
+        full_page=True,
+    )
+
+
 # ── Nav bar ────────────────────────────────────────────────
 
 

@@ -157,3 +157,23 @@ export interface OnboardingResponse {
   profile_version: number;
   tags_seeded: number;
 }
+
+export interface ConfigField {
+  key: string;
+  label: string;
+  type: "text" | "number" | "select";
+  options?: string[];
+  min?: number;
+  max?: number;
+  default?: string | number;
+}
+
+export interface PlatformInfo {
+  source_type: string;
+  display_name: string;
+  description: string;
+  icon: string;
+  config_fields: ConfigField[];
+  auth_type: string | null;
+  source: Source | null;
+}

@@ -8,6 +8,7 @@ import type {
   HealthResponse,
   IssuesResponse,
   OnboardingResponse,
+  PlatformInfo,
   Source,
   StatsResponse,
   TagQualityEntry,
@@ -99,6 +100,10 @@ export function updateSource(
 
 export function deleteSource(id: number): Promise<void> {
   return request(`/sources/${id}`, { method: "DELETE" });
+}
+
+export function getPlatforms(): Promise<PlatformInfo[]> {
+  return request<PlatformInfo[]>("/sources/platforms");
 }
 
 export function triggerFetch(id: number): Promise<FetchLog> {

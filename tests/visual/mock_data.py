@@ -388,6 +388,46 @@ AUTH_ISSUES: list[dict] = [
     },
 ]
 
+PLATFORMS: list[dict] = [
+    {
+        "source_type": "hackernews",
+        "display_name": "Hacker News",
+        "description": "Top stories, Show HN, Ask HN from Hacker News",
+        "icon": "hackernews",
+        "config_fields": [
+            {
+                "key": "endpoint", "label": "Story type",
+                "type": "select",
+                "options": ["top", "new", "best", "ask", "show"],
+                "default": "top",
+            },
+            {
+                "key": "limit", "label": "Max stories",
+                "type": "number", "min": 5, "max": 100, "default": 30,
+            },
+            {
+                "key": "min_score", "label": "Min score",
+                "type": "number", "min": 0, "max": 1000, "default": 0,
+            },
+        ],
+        "auth_type": None,
+        "source": {
+            "id": 10,
+            "name": "Hacker News",
+            "slug": "hackernews",
+            "source_type": "hackernews",
+            "config_json": json.dumps({"endpoint": "top", "limit": 30, "min_score": 0}),
+            "enabled": True,
+            "fetch_interval_minutes": 30,
+            "last_fetched_at": "2026-03-02T09:00:00Z",
+            "created_at": "2026-02-15T10:00:00Z",
+            "updated_at": "2026-03-02T09:00:00Z",
+            "category": "",
+            "starred": False,
+        },
+    },
+]
+
 HEALTH: dict = {
     "status": "ok",
     "database": "connected",
@@ -489,6 +529,8 @@ async def install_mock_routes(
                 aid = int(path.rsplit("/", 1)[-1])
                 article = next((a for a in state.articles if a["id"] == aid), None)
                 body = json.dumps(article or {})
+            elif path == "/api/sources/platforms":
+                body = json.dumps(PLATFORMS)
             elif path == "/api/sources":
                 body = json.dumps(state.sources)
             elif path == "/api/preferences":

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from backend.database import get_db
 from backend.models import FetchLog, Source, SourceCreate
-from backend.sources import get_source_class
+from backend.sources import get_platform_source_types, get_source_class
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sources", tags=["sources"])
@@ -24,16 +24,56 @@ async def list_sources() -> list[Source]:
         await db.close()
 
 
+@router.get("/platforms")
+async def list_platforms() -> list[dict[str, object]]:
+    """Return platform metadata merged with DB state."""
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall("SELECT * FROM sources")
+        sources_by_type: dict[str, dict[str, object]] = {}
+        for row in rows:
+            d = dict(row)
+            sources_by_type[str(d["source_type"])] = d
+
+        result: list[dict[str, object]] = []
+        for cls in get_platform_source_types():
+            source_row = sources_by_type.get(cls.source_type)
+            source_obj = Source(**source_row) if source_row else None
+            result.append({
+                "source_type": cls.source_type,
+                "display_name": cls.display_name,
+                "description": cls.platform_description,
+                "icon": cls.source_type,
+                "config_fields": cls.config_fields,
+                "auth_type": cls.auth_type,
+                "source": source_obj.model_dump(mode="json") if source_obj else None,
+            })
+        return result
+    finally:
+        await db.close()
+
+
 @router.post("")
 async def create_source(source: SourceCreate) -> Source:
     db = await get_db()
     try:
         # Validate source_type
-        if not get_source_class(source.source_type):
+        source_cls = get_source_class(source.source_type)
+        if not source_cls:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unknown source type: {source.source_type}",
             )
+
+        # Singleton guard for platform sources
+        if source_cls.is_platform:
+            existing = await db.execute_fetchall(
+                "SELECT id FROM sources WHERE source_type = ?", (source.source_type,)
+            )
+            if list(existing):
+                raise HTTPException(
+                    409, f"Platform source '{source_cls.display_name}' already exists"
+                )
 
         # Validate config_json is valid JSON
         try:

@@ -28,3 +28,4 @@ We record significant architecture and design decisions as ADRs. Each decision g
 | [020](020-tag-confidence-end-to-end.md) | Tag confidence end-to-end | Accepted |
 | [021](021-post-llm-score-adjustment.md) | Post-LLM score adjustment | Accepted |
 | [022](022-profile-synthesis-and-decay.md) | Profile synthesis and decay | Accepted |
+| [023](023-platform-sources.md) | Platform sources as singleton discoverable plugins | Accepted |

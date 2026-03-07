@@ -2,12 +2,13 @@ import {
   createSource,
   deleteSource,
   getAuthIssues,
+  getPlatforms,
   getSources,
   testSourceAuth,
   triggerFetch,
   updateSource,
 } from "../api";
-import type { AuthIssueEntry, Source } from "../types";
+import type { AuthIssueEntry, PlatformInfo, Source } from "../types";
 import { el, formatDate } from "../utils";
 import { showModal } from "./modal";
 import { showToast } from "./toast";
@@ -29,10 +30,24 @@ const ICON = {
   starOutline: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   starFilled: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   lock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  save: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+};
+
+const PLATFORM_ICONS: Record<string, string> = {
+  hackernews: `<svg width="20" height="20" viewBox="0 0 256 256" fill="none"><rect width="256" height="256" rx="4" fill="#ff6600"/><path d="M128 148.3 92.4 72h-22l52 108v52h11.2v-52l52-108h-22z" fill="#fff"/></svg>`,
+};
+
+const PLATFORM_DOMAINS: Record<string, string> = {
+  hackernews: "news.ycombinator.com",
 };
 
 function getFaviconUrl(source: Source): string | null {
   try {
+    // Platform sources: use known domain
+    const platformDomain = PLATFORM_DOMAINS[source.source_type];
+    if (platformDomain) {
+      return `https://www.google.com/s2/favicons?domain=${platformDomain}&sz=32`;
+    }
     const config = JSON.parse(source.config_json);
     const url = config.feed_url || config.page_url;
     if (!url) return null;
@@ -44,6 +59,7 @@ function getFaviconUrl(source: Source): string | null {
 }
 
 function getSourceTypeBadge(source: Source): string {
+  if (source.source_type === "hackernews") return "HN";
   return source.source_type === "webpage" ? "WEB" : "RSS";
 }
 
@@ -100,12 +116,14 @@ function formatRuleField(
 export function SourceManager(): HTMLElement {
   const container = el("div", { class: "source-manager" });
   let sources: Source[] = [];
+  let platforms: PlatformInfo[] = [];
   let authIssueMap = new Map<number, AuthIssueEntry>();
   let selectedType = "rss";
 
   async function load(): Promise<void> {
-    const [s, ai] = await Promise.all([getSources(), getAuthIssues()]);
+    const [s, ai, p] = await Promise.all([getSources(), getAuthIssues(), getPlatforms()]);
     sources = s;
+    platforms = p;
     authIssueMap = new Map(ai.map((e) => [e.source_id, e]));
     render();
   }
@@ -118,8 +136,228 @@ export function SourceManager(): HTMLElement {
     return Array.from(cats).sort();
   }
 
+  function renderPlatformCard(platform: PlatformInfo): HTMLElement {
+    const card = el("div", {
+      class: `platform-card${platform.source ? " enabled" : ""}`,
+    });
+
+    // Header — always visible: chevron, icon, name, on/off toggle
+    const header = el("div", { class: "platform-header" });
+
+    const chevron = el("span", { class: "platform-chevron" });
+    chevron.innerHTML = ICON.chevron;
+    header.appendChild(chevron);
+
+    const iconEl = el("div", { class: "platform-icon" });
+    iconEl.innerHTML = PLATFORM_ICONS[platform.icon] || "";
+    header.appendChild(iconEl);
+
+    const info = el("div", { class: "platform-info" });
+    info.appendChild(el("span", { class: "platform-name" }, platform.display_name));
+    if (platform.source) {
+      info.appendChild(
+        el("span", { class: "platform-status-hint" },
+          platform.source.last_fetched_at
+            ? `Last: ${formatDate(platform.source.last_fetched_at)}`
+            : "Never fetched"
+        )
+      );
+    } else {
+      info.appendChild(el("span", { class: "platform-status-hint" }, platform.description));
+    }
+    header.appendChild(info);
+
+    // On/off toggle switch
+    const toggle = el("label", { class: "platform-toggle" });
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !!platform.source;
+    toggle.appendChild(checkbox);
+    toggle.appendChild(el("span", { class: "platform-toggle-slider" }));
+    // Stop click from toggling the disclosure
+    toggle.addEventListener("click", (e) => e.stopPropagation());
+    checkbox.addEventListener("change", async (e) => {
+      e.stopPropagation();
+      if (checkbox.checked) {
+        // Enable
+        const defaultConfig: Record<string, string | number> = {};
+        for (const f of platform.config_fields) {
+          if (f.default != null) defaultConfig[f.key] = f.default;
+        }
+        try {
+          await createSource({
+            name: platform.display_name,
+            slug: platform.source_type,
+            source_type: platform.source_type,
+            config_json: JSON.stringify(defaultConfig),
+            category: "",
+          });
+          showToast(`${platform.display_name} enabled`, "success");
+          load();
+        } catch (err) {
+          checkbox.checked = false;
+          showToast(`Error: ${err}`, "error");
+        }
+      } else {
+        // Disable
+        const confirmed = await showModal({
+          title: "Disable platform",
+          message: `Disable "${platform.display_name}" and remove all its articles? This cannot be undone.`,
+          confirmLabel: "Disable",
+          danger: true,
+        });
+        if (confirmed && platform.source) {
+          await deleteSource(platform.source.id);
+          showToast(`${platform.display_name} disabled`, "info");
+          load();
+        } else {
+          checkbox.checked = true; // revert
+        }
+      }
+    });
+    header.appendChild(toggle);
+
+    // Toggle disclosure on header click
+    header.addEventListener("click", () => {
+      const isOpen = card.classList.toggle("platform-open");
+      chevron.classList.toggle("rotated", isOpen);
+    });
+
+    card.appendChild(header);
+
+    // Collapsible body — config + status + actions (only when enabled)
+    if (platform.source) {
+      const body = el("div", { class: "platform-body" });
+
+      const configSection = el("div", { class: "platform-config" });
+      const currentConfig = (() => {
+        try { return JSON.parse(platform.source!.config_json); } catch { return {}; }
+      })();
+
+      for (const field of platform.config_fields) {
+        const fieldEl = el("div", { class: "platform-field" });
+        fieldEl.appendChild(el("label", {}, field.label));
+
+        if (field.type === "select" && field.options) {
+          const select = document.createElement("select");
+          select.className = "input";
+          select.dataset.key = field.key;
+          for (const opt of field.options) {
+            const option = document.createElement("option");
+            option.value = opt;
+            option.textContent = opt;
+            if ((currentConfig[field.key] ?? field.default) === opt) option.selected = true;
+            select.appendChild(option);
+          }
+          fieldEl.appendChild(select);
+        } else {
+          const input = document.createElement("input");
+          input.type = field.type === "number" ? "number" : "text";
+          input.className = "input";
+          input.dataset.key = field.key;
+          if (field.min != null) input.min = String(field.min);
+          if (field.max != null) input.max = String(field.max);
+          input.value = String(currentConfig[field.key] ?? field.default ?? "");
+          fieldEl.appendChild(input);
+        }
+        configSection.appendChild(fieldEl);
+      }
+      body.appendChild(configSection);
+
+      // Footer: status (left) + actions (right) on one row
+      const footer = el("div", { class: "platform-footer" });
+
+      const status = el("div", { class: "platform-status" });
+      status.appendChild(
+        el("span", { class: "source-interval" },
+          `Every ${platform.source.fetch_interval_minutes}m`)
+      );
+      status.appendChild(
+        el("span", { class: "source-last-fetch" },
+          platform.source.last_fetched_at
+            ? `Last: ${formatDate(platform.source.last_fetched_at)}`
+            : "Never fetched"
+        )
+      );
+      status.appendChild(
+        el("span", { class: "source-next-run" },
+          `Next: ${formatNextRun(platform.source)}`)
+      );
+      footer.appendChild(status);
+
+      const actions = el("div", { class: "platform-actions" });
+
+      const saveBtn = el("button", {
+        class: "btn-icon-action",
+        title: "Save configuration",
+      });
+      saveBtn.innerHTML = ICON.save;
+      saveBtn.addEventListener("click", async () => {
+        const newConfig: Record<string, string | number> = { ...currentConfig };
+        const inputs = configSection.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select");
+        inputs.forEach((inp) => {
+          const key = inp.dataset.key;
+          if (!key) return;
+          newConfig[key] = inp.type === "number" ? Number(inp.value) : inp.value;
+        });
+        try {
+          await updateSource(platform.source!.id, { config_json: JSON.stringify(newConfig) });
+          showToast("Config saved", "success");
+          load();
+        } catch (err) {
+          showToast(`Error: ${err}`, "error");
+        }
+      });
+      actions.appendChild(saveBtn);
+
+      const fetchBtn = el("button", {
+        class: "btn-icon-action",
+        title: `Fetch new articles from ${platform.display_name}`,
+      });
+      fetchBtn.innerHTML = ICON.refresh;
+      fetchBtn.addEventListener("click", async () => {
+        fetchBtn.classList.add("spinning");
+        fetchBtn.setAttribute("disabled", "true");
+        try {
+          const log = await triggerFetch(platform.source!.id);
+          showToast(
+            `${platform.display_name}: ${log.items_new} new / ${log.items_found} found`,
+            "success"
+          );
+          load();
+        } catch (err) {
+          showToast(`Fetch failed: ${err}`, "error");
+          fetchBtn.classList.remove("spinning");
+          fetchBtn.removeAttribute("disabled");
+        }
+      });
+      actions.appendChild(fetchBtn);
+
+      footer.appendChild(actions);
+      body.appendChild(footer);
+      card.appendChild(body);
+    }
+
+    return card;
+  }
+
   function render(): void {
     container.innerHTML = "";
+
+    // Platforms section
+    if (platforms.length > 0) {
+      const section = el("div", { class: "platforms-section" });
+      section.appendChild(el("h3", { class: "section-heading" }, "Platforms"));
+      const grid = el("div", { class: "platform-grid" });
+      for (const p of platforms) {
+        grid.appendChild(renderPlatformCard(p));
+      }
+      section.appendChild(grid);
+      container.appendChild(section);
+    }
+
+    // Custom sources heading
+    container.appendChild(el("h3", { class: "section-heading" }, "Custom Sources"));
 
     // Add source form — card layout
     const form = el("form", { class: "source-form" });
@@ -246,20 +484,24 @@ export function SourceManager(): HTMLElement {
 
     container.appendChild(form);
 
-    // Source list
-    if (sources.length === 0) {
+    // Source list (exclude platform sources shown as cards above)
+    const customSources = sources.filter(
+      (s) => !platforms.some((p) => p.source_type === s.source_type)
+    );
+
+    if (customSources.length === 0) {
       container.appendChild(
         el(
           "div",
           { class: "empty-state" },
-          "No sources yet. Add a source above."
+          "No custom sources yet. Add a source above."
         )
       );
       return;
     }
 
     const list = el("div", { class: "source-list" });
-    for (const source of sources) {
+    for (const source of customSources) {
       list.appendChild(renderSourceRow(source));
     }
     container.appendChild(list);
