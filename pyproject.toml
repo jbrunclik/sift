@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Sift — personal news aggregator with LLM-powered relevance scoring"
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi>=0.115",
+    "fastapi>=0.136.0",
     "uvicorn[standard]>=0.44.0",
     "httpx>=0.28",
     "feedparser>=6.0.12",
