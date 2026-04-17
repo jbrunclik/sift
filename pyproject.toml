@@ -5,7 +5,7 @@ description = "Sift — personal news aggregator with LLM-powered relevance scor
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.34",
+    "uvicorn[standard]>=0.44.0",
     "httpx>=0.28",
     "feedparser>=6.0.12",
     "google-genai>=1.0",
