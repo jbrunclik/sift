@@ -12,7 +12,7 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "lxml>=6.1.0",
     "apscheduler>=4.0.0a6",
-    "pydantic-settings>=2.14.0",
+    "pydantic-settings>=2.14.1",
     "aiosqlite>=0.22.1",
     "trafilatura>=2.0",
 ]
